@@ -11,10 +11,21 @@ typedef void RotaryEncoderCallback(bool clockwise);
 
 class RotaryEncoder
 {
-#define PIN_INVALID 255
+#define PIN_INVALID 255 //Value representing an invalid pin
 
+    /**
+     * The first output pin of the rotary encoder
+     */
     uint8_t pin_a;
+
+    /**
+     * The second output pin of the rotary encoder
+     */
     uint8_t pin_b;
+
+    /**
+     * Function pointer to execute on interrupt
+     */
     RotaryEncoderCallback* callback;
 
     /**
@@ -40,6 +51,12 @@ class RotaryEncoder
     }
 
 public:
+    /**
+     *
+     * @param pin_a The first output pin of the rotary encoder
+     * @param pin_b The second output pin of the rotary encoder
+     * @param callback Function pointer to execute when rotary encoder is turned
+     */
     explicit RotaryEncoder(const uint8_t pin_a = PIN_INVALID, const uint8_t pin_b = PIN_INVALID, RotaryEncoderCallback* callback = nullptr)
     {
         this->pin_a = pin_a;
@@ -47,6 +64,10 @@ public:
         this->callback = callback;
     }
 
+    /**
+     * Attach an interrupt to pin a, executing the callback on its falling edge
+     * @return Whether the interrupt was successfully attached
+     */
     bool Attach()
     {
         if (this->pin_a == PIN_INVALID || this->pin_b == PIN_INVALID || this->callback == nullptr)

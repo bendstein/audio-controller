@@ -5,8 +5,11 @@
 #ifndef AUDIO_CONTROLLER_NOTES_H
 #define AUDIO_CONTROLLER_NOTES_H
 
-#define FREQUENCY_C0 16.35
+#define FREQUENCY_C0 16.35 //Frequency, in hz, for C in octave 0
 
+/**
+ * Enum of all notes in the chromatic scale
+ */
 enum MusicalNote
 {
     C = 0,
@@ -24,6 +27,15 @@ enum MusicalNote
     MAX
 };
 
+/**
+ * Get the frequency of the given musical note in the given octave
+ * @param note The note to get the frequency of
+ * @param octave The octave to get the frequency of the note in
+ * @return The frequency of the given note in the given octave
+ * @remark Frequencies calculated as equal temperament, starting with C0 at FREQUENCY_C0
+ * @todo Add another argument with an enum representing the tuning type,
+ *  e.g. Tuning::Equal, Tuning::Just?
+ */
 constexpr double GetMusicalNoteFrequency(const MusicalNote note, const uint8_t octave)
 {
     return FREQUENCY_C0 * std::pow(2, (note + (octave * MAX)) / (MAX * 1.));

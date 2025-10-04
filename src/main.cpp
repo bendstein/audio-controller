@@ -3,21 +3,37 @@
 #include "main.h"
 #include "notes.h"
 
+//Whether sensors are being calibrated, and if so, what kind (zeroes/vs active range)
 CalibrationState calibration_state = CalibrationState::None;
 
+//Non-committed calibration data for sensor 0
 auto input_range_0_calibrating = new SensorRangeData(0, INPUT_MAX_VALUE, 0);
+
+//Non-committed calibration data for sensor 1
 auto input_range_1_calibrating = new SensorRangeData(0, INPUT_MAX_VALUE, 0);
 
+//Calibration data for sensor 0
 auto input_range_0 = new SensorRangeData(TOF_ZERO_DFT, TOF_MIN_DFT, TOF_MAX_DFT);
+
+//Calibration data for sensor 1
 auto input_range_1 = new SensorRangeData(TOF_ZERO_DFT, TOF_MIN_DFT, TOF_MAX_DFT);
 
+//Range of output frequencies to map sensor 0 to
 auto frequency_range_0 = new FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::A, 4), GetMusicalNoteFrequency(MusicalNote::A, 4));
+
+//Range of output frequencies to map sensor 1 to
 auto frequency_range_1 = new FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4));
 
+//Value (out of INPUT_MAX_VALUE) representing to volume of the output audio
 auto volume = new std::atomic_uint16_t(INPUT_MAX_VALUE);
+
+//The audio frequency to play based on the last-read input from sensor 0
 auto frequency_0 = new std::atomic<double>(frequency_range_0->GetMin());
+
+//The audio frequency to play based on the last-read input from sensor 1
 auto frequency_1 = new std::atomic<double>(frequency_range_1->GetMin());
 
+//Timer
 hw_timer_t* timer = nullptr;
 
 void setup() {
@@ -25,8 +41,6 @@ void setup() {
 
     try
     {
-        // Serial.println("Start setup");
-
         //Setup pins
         pinMode(PIN_IN_TOF_0, PULLDOWN | INPUT);
         pinMode(PIN_IN_TOF_1, PULLDOWN | INPUT);
@@ -45,8 +59,6 @@ void setup() {
         timerAlarmWrite(timer, TIMER_INTERVAL, true);
 
         timerAlarmEnable(timer);
-
-        // Serial.println("End setup");
     }
     catch (std::exception& e)
     {
@@ -74,16 +86,16 @@ void loop()
             return;
         }
 
-        // Serial.println("Start loop");
+        //At this point, not calibrating
+
         const auto t = micros();
 
         //Get and update current volume
         const auto new_volume = analogRead(PIN_IN_VOLUME);
         volume->store(new_volume);
 
+        //Get ratio to max volume
         const auto volume_scale = new_volume / (INPUT_MAX_VALUE * 1.);
-
-        //Not calibrating
 
         //Calculate next value in wave based on current frequency values.
         const double current_frequency_0 = frequency_0->load();
@@ -99,8 +111,6 @@ void loop()
 
         dacWrite(AUDIO_CHANNEL_0, wave_value_0);
         dacWrite(AUDIO_CHANNEL_1, wave_value_1);
-
-        // Serial.println("End loop");
     }
     catch (std::exception& e)
     {
@@ -122,19 +132,26 @@ uint8_t wave(const uint64_t t, const double scale, const double chord[], const u
     {
         const auto chord_value = chord[i];
 
+        //Ignore non-positive frequencies.
+        //0 indicates explicitly to ignore,
+        //negative is invalid
         if (chord_value <= 0)
             continue;
 
+        //Calculate sine wave for this frequency and time, scaled for volume
         const auto value = scale * sin(2 * PI * chord_value * ts);
         f += value;
         count += 1;
     }
 
+    //Translate the waves to be centered at scale instead of at 0,
+    //to prevent negative values
     if (count > 0)
     {
         f = scale + f / count;
     }
 
+    //Map output value to a value between 0 and 255
     const auto v = static_cast<int32_t>(std::floor((DAC_MAX / 2.) * f));
     return static_cast<uint8_t>(std::max(0, std::min(DAC_MAX, v)));
 }
@@ -143,8 +160,6 @@ void update_frequency()
 {
     try
     {
-        // Serial.println("Start update frequency");
-
         //Get current sensor range data if not calibrating
         const SensorRangeData* current_input_range_0 = nullptr;
         const SensorRangeData* current_input_range_1 = nullptr;
@@ -164,8 +179,6 @@ void update_frequency()
             frequency_0->store(calculate_frequency(sensor_value_0, current_input_range_0, frequency_range_0));
             frequency_1->store(calculate_frequency(sensor_value_1, current_input_range_1, frequency_range_1));
         }
-
-        // Serial.println("End update frequency");
     }
     catch (std::exception& e)
     {
@@ -177,7 +190,6 @@ void update_frequency()
 double calculate_frequency(const uint16_t sensor_value, const SensorRangeData* sensor_range, const FrequencyRangeData* frequency_range)
 {
     uint16_t sensor_zero, sensor_min, sensor_max;
-
     sensor_range->GetValues(sensor_zero, sensor_min, sensor_max);
 
     //Cut off value if at/below zero
@@ -207,8 +219,10 @@ double calculate_frequency(const uint16_t sensor_value, const SensorRangeData* s
 
 CalibrationState handle_calibration()
 {
+    //Get current state for calibration
     const auto current_calibration_state = calibration_state;
 
+    //Determine what state should be based on pin values
     const auto is_pin_zero = digitalRead(PIN_IN_ZERO) == HIGH;
     const auto is_pin_calibrate = digitalRead(PIN_IN_CALIBRATE) == HIGH;
 
@@ -255,27 +269,24 @@ CalibrationState handle_calibration()
         }
     }
 
-    //Read sensor value and update zeroes/range
-    const auto sensor_value_0 = next_calibration_state == CalibrationState::None?
-        0
-    : readTOFPin(PIN_IN_TOF_0);
-
-    const auto sensor_value_1 = next_calibration_state == CalibrationState::None?
-        0
-        : readTOFPin(PIN_IN_TOF_1);
-
-    switch (next_calibration_state)
+    //Read sensor values and update zeroes/range
+    if (next_calibration_state != CalibrationState::None)
     {
-        case CalibrationState::Zeroing: //Update zeroes
-            input_range_0_calibrating->UpdateZeroIfGreater(sensor_value_0);
-            input_range_1_calibrating->UpdateZeroIfGreater(sensor_value_1);
-            break;
-        case CalibrationState::Calibrating: //Update input ranges
-            input_range_0_calibrating->UpdateRangeIfMinMax(sensor_value_0);
-            input_range_1_calibrating->UpdateRangeIfMinMax(sensor_value_1);
-            break;
-        case CalibrationState::None:
-            break;
+        const auto sensor_value_0 = readTOFPin(PIN_IN_TOF_0);
+        const auto sensor_value_1 = readTOFPin(PIN_IN_TOF_1);
+
+        switch (next_calibration_state)
+        {
+            case CalibrationState::Zeroing: //Update zeroes
+                input_range_0_calibrating->UpdateZeroIfGreater(sensor_value_0);
+                input_range_1_calibrating->UpdateZeroIfGreater(sensor_value_1);
+                break;
+            case CalibrationState::Calibrating: //Update input ranges
+                input_range_0_calibrating->UpdateRangeIfMinMax(sensor_value_0);
+                input_range_1_calibrating->UpdateRangeIfMinMax(sensor_value_1);
+                break;
+            default: ;
+        }
     }
 
     //Update and return new calibration state
@@ -283,15 +294,17 @@ CalibrationState handle_calibration()
     return next_calibration_state;
 }
 
-
 uint16_t readTOFPin(const uint8_t pin)
 {
     const auto sensor_value = analogRead(pin);
 
+    //Round the sensor value to the previous multiple of TOF_ROUNDING
     return TOF_ROUNDING * static_cast<uint16_t>(std::floor(sensor_value / (TOF_ROUNDING * 1.)));
 }
 
 void isr_timer()
 {
+    //Calculate new frequencies from sensor values
+    //on interval
     update_frequency();
 }
