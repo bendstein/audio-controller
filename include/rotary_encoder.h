@@ -6,13 +6,12 @@
 #define AUDIO_CONTROLLER_ROTARY_ENCODER_H
 
 #include <Arduino.h>
+#include "common.h"
 
 typedef void RotaryEncoderCallback(bool clockwise);
 
 class RotaryEncoder
 {
-#define PIN_INVALID 255 //Value representing an invalid pin
-
     /**
      * The first output pin of the rotary encoder
      */
