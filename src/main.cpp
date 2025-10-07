@@ -25,11 +25,18 @@ std::atomic<double>* frequencies[] = {
     new std::atomic<double>(frequency_ranges[1]->GetMin())
 };
 
+constexpr uint8_t audio_channels[] = { AUDIO_CHANNEL_0, AUDIO_CHANNEL_1 };
+
 //Value (out of INPUT_MAX_VALUE) representing to volume of the output audio
 auto volume = new std::atomic_uint16_t(INPUT_MAX_VALUE);
 
+//Flags
+volatile std::atomic_bool flag_isr_calibration_zero {};
+volatile std::atomic_bool flag_isr_calibration_range {};
+
 void setup() {
     Serial.begin(9600);
+    Serial.println();
 
     try
     {
@@ -51,6 +58,17 @@ void setup() {
         timerAlarmWrite(timer, TIMER_INTERVAL, true);
 
         timerAlarmEnable(timer);
+
+        //Clear flags
+        flag_isr_calibration_zero.store(false);
+        flag_isr_calibration_range.store(false);
+
+        //Setup interrupts
+        attachInterrupt(digitalPinToInterrupt(PIN_IN_ZERO), isr_zero, RISING);
+        attachInterrupt(digitalPinToInterrupt(PIN_IN_CALIBRATE), isr_calibrate, RISING);
+
+        //Zero
+        sensors.UpdateZeros();
     }
     catch (std::exception& e)
     {
@@ -63,24 +81,43 @@ void loop()
 {
     try
     {
-        /*
-        //Update zeroes/calibrate sensor ranges
-        const auto new_calibration_state = handle_calibration();
+        //Handle calibration flags
+        auto handle_calibration_type = CalibrationState::None;
+
+        auto flag_isr_calibration_zero_current = flag_isr_calibration_zero.load();
+        if (flag_isr_calibration_zero_current) //Toggle zeroing
+        {
+            flag_isr_calibration_zero.compare_exchange_strong(flag_isr_calibration_zero_current, false);
+            handle_calibration_type = CalibrationState::Zeroing;
+        }
+
+        auto flag_isr_calibration_range_current = flag_isr_calibration_range.load();
+        if (flag_isr_calibration_range_current) //Toggle range calibration
+        {
+            flag_isr_calibration_range.compare_exchange_strong(flag_isr_calibration_range_current, false);
+            handle_calibration_type = CalibrationState::Calibrating;
+        }
+
+        //Update calibration data if currently calibrating or flagged to change calibration state
+        if (calibration_state != CalibrationState::None || handle_calibration_type != CalibrationState::None)
+        {
+            handle_calibration(handle_calibration_type);
+        }
 
         //Update calibration indicators
-        digitalWrite(PIN_OUT_INDICATE_ZERO, new_calibration_state == CalibrationState::Zeroing? HIGH : LOW);
-        digitalWrite(PIN_OUT_INDICATE_CAL, new_calibration_state == CalibrationState::Calibrating? HIGH : LOW);
+        digitalWrite(PIN_OUT_INDICATE_ZERO, calibration_state == CalibrationState::Zeroing? HIGH : LOW);
+        digitalWrite(PIN_OUT_INDICATE_CAL, calibration_state == CalibrationState::Calibrating? HIGH : LOW);
 
         //Is calibrating/zeroing; clear audio channel and return
         if (calibration_state != CalibrationState::None)
         {
-            dacWrite(AUDIO_CHANNEL_0, 0);
-            dacWrite(AUDIO_CHANNEL_1, 0);
+            for (auto &c : audio_channels)
+            {
+                dacWrite(c, 0);
+            }
+
             return;
         }
-        */
-
-        //At this point, not calibrating
 
         const auto t = micros();
 
@@ -92,22 +129,30 @@ void loop()
         const auto volume_scale = new_volume / (INPUT_MAX_VALUE * 1.);
 
         //Calculate next value in wave based on current frequency values
-        
 
-        // //Calculate next value in wave based on current frequency values.
-        // const double current_frequency_0 = frequency_0->load();
-        // const double current_frequency_1 = frequency_1->load();
-        //
-        // //Calculate wave for each channel. Can put multiple frequencies in
-        // //each chord, don't need to be the same
-        // const double chord_0[] = { current_frequency_0, current_frequency_1 };
-        // const double chord_1[] = { current_frequency_0, current_frequency_1 };
-        //
-        // const auto wave_value_0 = wave(t, volume_scale, chord_0, sizeof(chord_0) / sizeof(chord_0[0]));
-        // const auto wave_value_1 = wave(t, volume_scale, chord_1, sizeof(chord_1) / sizeof(chord_1[0]));
-        //
-        // dacWrite(AUDIO_CHANNEL_0, wave_value_0);
-        // dacWrite(AUDIO_CHANNEL_1, wave_value_1);
+        //Split frequencies across channels
+        const auto d = TOFSensorDriver::GetSensorCount() / sizeof(audio_channels);
+        const auto r = TOFSensorDriver::GetSensorCount() % sizeof(audio_channels);
+
+        //Max length of chord is sensor count / # of channels, + 1 if there's a remainder
+        const auto chord_len = d + (r == 0? 0 : 1);
+        double chord[chord_len];
+
+        for (int i = 0, c = 0; c < sizeof(audio_channels); c++)
+        {
+            //Length of chord on this channel is sensor count / # of channels, + 1 if within remainder
+            const auto channel_chord_len = d + ((r == 0 || c > r)? 0 : 1);
+
+            //Set chord values
+            for (int j = 0; j < channel_chord_len; j++)
+            {
+                chord[j] = frequencies[i++]->load();
+            }
+
+            //Calculate next value for wave and write to channel
+            const auto wave_value = wave(t, volume_scale, chord, channel_chord_len);
+            dacWrite(audio_channels[c], wave_value);
+        }
     }
     catch (std::exception& e)
     {
@@ -178,6 +223,10 @@ double calculate_frequency(const int sensor, const FrequencyRangeData* frequency
     uint16_t sensor_min, sensor_max;
     const auto sensor_value = sensors.GetSensorValue(sensor, sensor_min, sensor_max);
 
+    //Zero frequency
+    if (sensor_value == 0)
+        return 0;
+
     //Invalid range of sensor values
     if (sensor_max <= sensor_min)
         return 0;
@@ -199,24 +248,26 @@ double calculate_frequency(const int sensor, const FrequencyRangeData* frequency
     return calculated_frequency;
 }
 
-CalibrationState handle_calibration()
+CalibrationState handle_calibration(const CalibrationState toggle_state)
 {
     //Get current state for calibration
     const auto current_calibration_state = calibration_state;
 
-    //Determine what state should be based on pin values
-    const auto is_pin_zero = digitalRead(PIN_IN_ZERO) == HIGH;
-    const auto is_pin_calibrate = digitalRead(PIN_IN_CALIBRATE) == HIGH;
+    //Determine what next state should be
+    CalibrationState next_calibration_state = current_calibration_state;
 
-    CalibrationState next_calibration_state = CalibrationState::None;
-
-    if (is_pin_zero)
+    //Toggle state == None => no change
+    if (toggle_state != CalibrationState::None)
     {
-        next_calibration_state = CalibrationState::Zeroing;
-    }
-    else if (is_pin_calibrate)
-    {
-        next_calibration_state = CalibrationState::Calibrating;
+        if (current_calibration_state == CalibrationState::None) //Start calibration
+        {
+            next_calibration_state = toggle_state;
+        }
+        else if (current_calibration_state == toggle_state) //Stop calibration
+        {
+            next_calibration_state = CalibrationState::None;
+            // Serial.println(sensors.ToString(true).c_str());
+        }
     }
 
     const auto state_change = next_calibration_state != current_calibration_state;
@@ -241,16 +292,19 @@ CalibrationState handle_calibration()
     return next_calibration_state;
 }
 
-uint16_t read_tof_pin(const uint8_t pin)
-{
-    const auto sensor_value = analogRead(pin);
-
-    //Round the sensor value to the previous multiple of TOF_ROUNDING
-    return TOF_ROUNDING * static_cast<uint16_t>(std::floor(sensor_value / (TOF_ROUNDING * 1.)));
-}
-
 void isr_timer()
 {
-    //Calculate new frequencies from sensor values on interval
-    update_frequency();
+    update_frequency(); //Update frequencies from sensor values on interval
+}
+
+void isr_zero()
+{
+    DEBOUNCE_MS(250)
+    flag_isr_calibration_zero.store(true);
+}
+
+void isr_calibrate()
+{
+    DEBOUNCE_MS(250)
+    flag_isr_calibration_range.store(true);
 }

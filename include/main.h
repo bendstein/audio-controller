@@ -24,10 +24,6 @@
 
 #define BUFFER_ZERO 32                      //Add buffer when zeroing to help account for noise
 #define TIMER_INTERVAL 50000                //Frequency at which update timer should trigger
-#define TOF_ROUNDING 16                     //Round input values from TOF pins to the previous multiple of this value
-#define TOF_ZERO_DFT 1000                   //Default zero for TOF input before calibration
-#define TOF_MIN_DFT 1150                    //Default min value in range for TOF input before calibration
-#define TOF_MAX_DFT INPUT_MAX_VALUE         //Default max value in range for TOF input before calibration
 
 /**
  * Whether sensors are being calibrated, and if so,
@@ -66,13 +62,24 @@ void update_frequency();
 /**
  * Handle calibrating sensors, as well as
  * changes in calibration state.
+ * @param toggle_state The calibration type to toggle
  * @return The new calibration state
  */
-CalibrationState handle_calibration();
+CalibrationState handle_calibration(CalibrationState toggle_state);
 
 /**
  * Callback for timer interrupt
  */
 void isr_timer();
+
+/**
+ * Callback for zero button interrupt
+ */
+void isr_zero();
+
+/**
+ * Callback for calibrate button interrupt
+ */
+void isr_calibrate();
 
 #endif //AUDIO_CONTROLLER_MAIN_H

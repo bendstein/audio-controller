@@ -6,6 +6,9 @@
 #define AUDIO_CONTROLLER_IR_TOF_SENSOR_DRIVER_H
 #include <Arduino.h>
 #include <atomic>
+#include <iomanip>
+#include <sstream>
+
 #include "common.h"
 
 class TOFSensor
@@ -15,16 +18,22 @@ class TOFSensor
      */
     constexpr static int ROUNDING = 16;
 
+    constexpr static uint16_t ZERO_DFT = 1000;
+
+    constexpr static uint16_t MIN_DFT = 1150;
+
+    constexpr static uint16_t MAX_DFT = INPUT_MAX_VALUE;
+
     /**
      * GPIO PIN
      */
-    uint8_t pin;
+    uint8_t pin = PIN_INVALID;
 
     /**
      * The max value that the sensor produces when not being interacted
      * with.
      */
-    std::atomic_uint16_t zero {};
+    std::atomic_uint16_t zero { ZERO_DFT };
 
     /**
      * The range of values that the sensor can produce when it is
@@ -32,7 +41,7 @@ class TOFSensor
      * with the max as the most-significant 16 bits and the min
      * as the least-significant 16 bits.
      */
-    std::atomic_uint32_t minmax {};
+    std::atomic_uint32_t minmax { MIN_DFT | (MAX_DFT << 16) };
 
     TOFSensor(const uint8_t pin, const uint16_t zero, const uint32_t minmax) : pin(pin), zero(zero), minmax(minmax) { }
 
@@ -41,14 +50,15 @@ public:
 
     TOFSensor(const TOFSensor& other) : TOFSensor(other.pin, other.zero, other.minmax) { }
 
-    explicit TOFSensor(const uint8_t pin) : TOFSensor(pin, 0, 0, 0) { }
+    explicit TOFSensor(const uint8_t pin) : TOFSensor(pin, ZERO_DFT, MIN_DFT, MAX_DFT) { }
 
     TOFSensor() : TOFSensor(PIN_INVALID) {}
 
     /**
+     * @param consider_zero If true, reduce value to account for zero
      * @return The current value of the attached pin
      */
-    uint16_t GetValue() const
+    uint16_t GetValue(const bool consider_zero = false) const
     {
         //Return 0 if invalid pin
         if (pin == PIN_INVALID)
@@ -58,20 +68,20 @@ public:
         const auto sensor_value = analogRead(pin);
 
         //Round sensor value
-        return ROUNDING * static_cast<uint16_t>(std::floor(sensor_value / (ROUNDING * 1.)));
-    }
+        auto rounded = ROUNDING * static_cast<uint16_t>(std::floor(sensor_value / (ROUNDING * 1.)));
 
-    /**
-     * @return The current value of the attached pin, or 0 if <= zero
-     */
-    uint16_t GetZeroedValue() const
-    {
-        const auto value = GetValue();
+        //Subtract zero
+        if (consider_zero)
+        {
+            const auto current_zero = zero.load();
 
-        if (value <= zero.load())
-            return 0;
+            if (rounded > current_zero)
+                rounded -= current_zero;
+            else
+                rounded = 0;
+        }
 
-        return value;
+        return rounded;
     }
 
     /**
@@ -121,25 +131,42 @@ public:
      * and store them in the given reference parameters
      * @param out_min Reference param that min value will be put in
      * @param out_max Reference param that max value will be put in
+     * @param consider_zero If true, reduce output values to account for zero
      */
-    void OutputRange(uint16_t& out_min, uint16_t& out_max) const
+    void OutputRange(uint16_t& out_min, uint16_t& out_max, const bool consider_zero = false) const
     {
         const auto range = minmax.load();
         out_min = range & 0xFFFF;
         out_max = range >> 16;
+
+        if (consider_zero)
+        {
+            const auto current_zero = zero.load();
+
+            if (out_min > current_zero)
+                out_min -= current_zero;
+            else
+                out_min = 0;
+
+            if (out_max > current_zero)
+                out_max -= current_zero;
+            else
+                out_max = 0;
+        }
     }
 
     /**
-     * Return current value of the attached pin, and output range
-     * of valid values
+     * Return the current value of the pin. Get the range of valid values that can be outputted by the sensor,
+     * and store them in the given reference parameters
      * @param out_min Reference param that min value will be put in
      * @param out_max Reference param that max value will be put in
-     * @return The current value of the attached pin, or 0 if <= zero
+     * @param consider_zero If true, reduce values to account for zero
+     * @return The current value of the pin
      */
-    uint16_t GetZeroedValueAndRange(uint16_t& out_min, uint16_t& out_max) const
+    uint16_t GetValueAndRange(uint16_t& out_min, uint16_t& out_max, const bool consider_zero = false) const
     {
-        OutputRange(out_min, out_max);
-        return GetZeroedValue();
+        OutputRange(out_min, out_max, consider_zero);
+        return GetValue(consider_zero);
     }
 
     /**
@@ -182,7 +209,7 @@ public:
 
             if (new_zero > current_zero)
             {
-                if (zero.compare_exchange_strong(current_zero, new_zero))
+                if (zero.compare_exchange_weak(current_zero, new_zero))
                 {
                     break;
                 }
@@ -201,6 +228,12 @@ public:
      */
     void UpdateRangeIfMinMax(const uint16_t new_value)
     {
+        //Clamp bottom to zero
+        const auto current_zero = zero.load();
+        const auto new_value_adj = new_value < current_zero
+            ? current_zero
+            : new_value;
+
         //Update the current values for minmax with the new value,
         //retrying if the current value changed during the processed
         while (true)
@@ -213,15 +246,15 @@ public:
             auto new_min = current_min;
             auto new_max = current_max;
 
-            if (new_value < current_min)
+            if (new_value_adj < current_min)
             {
-                new_min = new_value;
+                new_min = new_value_adj;
                 changed = true;
             }
 
-            if (new_value > current_max)
+            if (new_value_adj > current_max)
             {
-                new_max = new_value;
+                new_max = new_value_adj;
                 changed = true;
             }
 
@@ -229,7 +262,7 @@ public:
             {
                 const auto new_minmax = new_min | (new_max << 16);
 
-                if (this->minmax.compare_exchange_strong(current_minmax, new_minmax))
+                if (this->minmax.compare_exchange_weak(current_minmax, new_minmax))
                 {
                     break;
                 }
@@ -240,6 +273,26 @@ public:
             }
         }
     }
+
+    std::string ToString() const
+    {
+        std::stringstream stream {};
+        WriteToStringStream(stream);
+        return stream.str();
+    }
+
+    void WriteToStringStream(std::stringstream& stream) const
+    {
+        uint16_t value_min, value_max;
+        OutputRange(value_min, value_max);
+
+        stream << "Sensor| Pin: " << static_cast<uint16_t>(pin)
+            << "; Zero: " << zero.load()
+            << "; Min: " << value_min
+            << "; Max: " << value_max
+            << "; MinMax: " << minmax.load();
+            ;
+    }
 };
 
 class TOFSensorDriver
@@ -248,13 +301,13 @@ class TOFSensorDriver
     TOFSensor sensors[SENSORS_COUNT];
 
 public:
-    explicit TOFSensorDriver(const uint8_t pins[])
+    explicit TOFSensorDriver(const uint8_t pins[SENSORS_COUNT])
     {
         for (int i = 0; i < SENSORS_COUNT; i++)
         {
             sensors[i].SetPin(pins[i]);
             sensors[i].SetZero(0);
-            sensors[i].SetRange(0, 0);
+            sensors[i].SetRange(0, INPUT_MAX_VALUE);
         }
     }
 
@@ -266,12 +319,14 @@ public:
     {
         for (auto &sensor : sensors)
         {
+            const auto value = sensor.GetValue();
+
             //If flag is set, reset sensor zero to 0
             if (clear_current_zeros)
                 sensor.SetZero(0);
 
             //Read value from sensor and apply to zero
-            sensor.UpdateZeroIfGreater(sensor.GetValue());
+            sensor.UpdateZeroIfGreater(value);
         }
     }
 
@@ -283,12 +338,14 @@ public:
     {
         for (auto &sensor : sensors)
         {
+            const auto value = sensor.GetValue();
+
             //If flag is set, reset sensor range to 0
             if (clear_current_range)
                 sensor.SetRange(std::numeric_limits<uint16_t>::max(), 0);
 
             //Read value from sensor and apply to range
-            sensor.UpdateRangeIfMinMax(sensor.GetValue());
+            sensor.UpdateRangeIfMinMax(value);
         }
     }
 
@@ -301,7 +358,7 @@ public:
         if (i < 0 || i >= SENSORS_COUNT)
             throw std::out_of_range("Invalid sensor index.");
 
-        return sensors[i].GetZeroedValue();
+        return sensors[i].GetValue(true);
     }
 
     /**
@@ -315,7 +372,7 @@ public:
         if (i < 0 || i >= SENSORS_COUNT)
             throw std::out_of_range("Invalid sensor index.");
 
-        return sensors[i].GetZeroedValueAndRange(out_min, out_max);
+        return sensors[i].GetValueAndRange(out_min, out_max, true);
     }
 
     /**
@@ -324,6 +381,28 @@ public:
     static int GetSensorCount()
     {
         return SENSORS_COUNT;
+    }
+
+    std::string ToString(const bool write_value = false) const
+    {
+        std::stringstream stream {};
+
+        stream << "Sensors:" << std::endl;
+
+        for (auto &sensor : sensors)
+        {
+            stream << "  - ";
+            sensor.WriteToStringStream(stream);
+
+            if (write_value)
+            {
+                stream << " [" << sensor.GetValue(true) << "]";
+            }
+
+            stream << std::endl;
+        }
+
+        return stream.str();
     }
 };
 
