@@ -52,7 +52,7 @@ uint8_t wave(uint64_t t, double scale, const double chord[], uint8_t chord_len);
  * @param frequency_range The range of potential output frequencies
  * @return The frequency corresponding to the given sensor value
  */
-double calculate_frequency(int sensor, const FrequencyRangeData* frequency_range);
+double calculate_frequency(int sensor, const FrequencyRangeData &frequency_range);
 
 /**
  * Update current frequency values based on sensors
@@ -81,5 +81,10 @@ void isr_zero();
  * Callback for calibrate button interrupt
  */
 void isr_calibrate();
+
+/**
+ * @return A string containing general info on current state
+ */
+std::string get_debug_info();
 
 #endif //AUDIO_CONTROLLER_MAIN_H

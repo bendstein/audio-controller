@@ -297,7 +297,10 @@ public:
 
 class TOFSensorDriver
 {
+public:
     static constexpr int SENSORS_COUNT = 2;
+
+private:
     TOFSensor sensors[SENSORS_COUNT];
 
 public:
@@ -375,18 +378,17 @@ public:
         return sensors[i].GetValueAndRange(out_min, out_max, true);
     }
 
-    /**
-     * @return The number of sensors
-     */
-    static int GetSensorCount()
-    {
-        return SENSORS_COUNT;
-    }
-
     std::string ToString(const bool write_value = false) const
     {
         std::stringstream stream {};
 
+        WriteToStringStream(stream, write_value);
+
+        return stream.str();
+    }
+
+    void WriteToStringStream(std::stringstream &stream, const bool write_value = false) const
+    {
         stream << "Sensors:" << std::endl;
 
         for (auto &sensor : sensors)
@@ -401,8 +403,6 @@ public:
 
             stream << std::endl;
         }
-
-        return stream.str();
     }
 };
 

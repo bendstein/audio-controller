@@ -9,21 +9,18 @@
 CalibrationState calibration_state = CalibrationState::None;
 
 //Attached TOF sensors
-constexpr uint8_t sensor_pins[] = { PIN_IN_TOF_0, PIN_IN_TOF_1 };
+constexpr uint8_t sensor_pins[TOFSensorDriver::SENSORS_COUNT] = { PIN_IN_TOF_0, PIN_IN_TOF_1 };
 auto sensors = TOFSensorDriver(sensor_pins);
 
 //Range of output frequencies to map sensors to
-const FrequencyRangeData* frequency_ranges[]
+const FrequencyRangeData frequency_ranges[TOFSensorDriver::SENSORS_COUNT]
 {
-    new FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::A, 4), GetMusicalNoteFrequency(MusicalNote::A, 4)),
-    new FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4))
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::A, 4), GetMusicalNoteFrequency(MusicalNote::A, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4))
 };
 
 //The audio frequency to play based on the last-read input from sensors
-std::atomic<double>* frequencies[] = {
-    new std::atomic<double>(frequency_ranges[0]->GetMin()),
-    new std::atomic<double>(frequency_ranges[1]->GetMin())
-};
+std::atomic<double> frequencies[TOFSensorDriver::SENSORS_COUNT];
 
 constexpr uint8_t audio_channels[] = { AUDIO_CHANNEL_0, AUDIO_CHANNEL_1 };
 
@@ -31,8 +28,8 @@ constexpr uint8_t audio_channels[] = { AUDIO_CHANNEL_0, AUDIO_CHANNEL_1 };
 auto volume = new std::atomic_uint16_t(INPUT_MAX_VALUE);
 
 //Flags
-volatile std::atomic_bool flag_isr_calibration_zero {};
-volatile std::atomic_bool flag_isr_calibration_range {};
+std::atomic_bool flag_isr_calibration_zero {};
+std::atomic_bool flag_isr_calibration_range {};
 
 void setup() {
     Serial.begin(9600);
@@ -40,6 +37,15 @@ void setup() {
 
     try
     {
+        //Set initial frequency values to bottom of respective ranges
+        for (int i = 0; i < TOFSensorDriver::SENSORS_COUNT; i++)
+        {
+            frequencies[i].store(frequency_ranges[i].GetMin());
+        }
+
+        //Write some initial debug info
+        Serial.println(get_debug_info().c_str());
+
         //Setup pins
         pinMode(PIN_IN_TOF_0, PULLDOWN | INPUT);
         pinMode(PIN_IN_TOF_1, PULLDOWN | INPUT);
@@ -82,6 +88,7 @@ void loop()
     try
     {
         //Handle calibration flags
+        const auto calibration_state_initial = calibration_state;
         auto handle_calibration_type = CalibrationState::None;
 
         auto flag_isr_calibration_zero_current = flag_isr_calibration_zero.load();
@@ -119,6 +126,12 @@ void loop()
             return;
         }
 
+        //If calibration state changed, print debug info
+        if (calibration_state_initial != calibration_state)
+        {
+            Serial.println(get_debug_info().c_str());
+        }
+
         const auto t = micros();
 
         //Get and update current volume
@@ -131,22 +144,22 @@ void loop()
         //Calculate next value in wave based on current frequency values
 
         //Split frequencies across channels
-        const auto d = TOFSensorDriver::GetSensorCount() / sizeof(audio_channels);
-        const auto r = TOFSensorDriver::GetSensorCount() % sizeof(audio_channels);
+        constexpr auto d = TOFSensorDriver::SENSORS_COUNT / sizeof(audio_channels);
+        constexpr auto r = TOFSensorDriver::SENSORS_COUNT % sizeof(audio_channels);
 
         //Max length of chord is sensor count / # of channels, + 1 if there's a remainder
-        const auto chord_len = d + (r == 0? 0 : 1);
+        constexpr auto chord_len = d + (r == 0? 0 : 1);
         double chord[chord_len];
 
         for (int i = 0, c = 0; c < sizeof(audio_channels); c++)
         {
             //Length of chord on this channel is sensor count / # of channels, + 1 if within remainder
-            const auto channel_chord_len = d + ((r == 0 || c > r)? 0 : 1);
+            constexpr auto channel_chord_len = d + ((r == 0 || c > r)? 0 : 1);
 
             //Set chord values
-            for (int j = 0; j < channel_chord_len; j++)
+            for (double &j : chord)
             {
-                chord[j] = frequencies[i++]->load();
+                j = frequencies[i++].load();
             }
 
             //Calculate next value for wave and write to channel
@@ -205,9 +218,9 @@ void update_frequency()
         //Update frequencies based on sensor values, if not calibrating
         if (calibration_state == CalibrationState::None)
         {
-            for (auto i = 0; i < TOFSensorDriver::GetSensorCount(); i++)
+            for (auto i = 0; i < TOFSensorDriver::SENSORS_COUNT; i++)
             {
-                frequencies[i]->store(calculate_frequency(i, frequency_ranges[i]));
+                frequencies[i].store(calculate_frequency(i, frequency_ranges[i]));
             }
         }
     }
@@ -218,7 +231,7 @@ void update_frequency()
     }
 }
 
-double calculate_frequency(const int sensor, const FrequencyRangeData* frequency_range)
+double calculate_frequency(const int sensor, const FrequencyRangeData &frequency_range)
 {
     uint16_t sensor_min, sensor_max;
     const auto sensor_value = sensors.GetSensorValue(sensor, sensor_min, sensor_max);
@@ -241,7 +254,7 @@ double calculate_frequency(const int sensor, const FrequencyRangeData* frequency
 
     //Map ratio to range of frequencies
     double frequency_min, frequency_max;
-    frequency_range->GetValues(frequency_min, frequency_max);
+    frequency_range.GetValues(frequency_min, frequency_max);
 
     const auto calculated_frequency = ((frequency_max - frequency_min) * ratio) + frequency_min;
 
@@ -290,6 +303,36 @@ CalibrationState handle_calibration(const CalibrationState toggle_state)
     //Update and return new calibration state
     calibration_state = next_calibration_state;
     return next_calibration_state;
+}
+
+std::string get_debug_info()
+{
+    std::stringstream stream {};
+
+    const auto vol = volume->load();
+    const auto vol_percent = (100. * vol) / INPUT_MAX_VALUE;
+
+    stream << std::fixed << std::showpoint << std::setprecision(2)
+        << "Volume: " << vol
+        << " (" << vol_percent << "%)" << std::endl
+        << "Frequencies:" << std::endl;
+
+    for (int i = 0; i < TOFSensorDriver::SENSORS_COUNT; i++)
+    {
+        stream << "  - Sensor " << i
+            << "| Pin: " << static_cast<int>(sensor_pins[i])
+            << "; Freq. Range: " << frequency_ranges[i].GetMin()
+            << "hz - " << frequency_ranges[i].GetMax()
+            << "hz; Freq. Current: " << frequencies[i].load() << "hz"
+            << std::endl;
+        ;
+    }
+
+    stream << std::endl;
+
+    sensors.WriteToStringStream(stream, true);
+
+    return stream.str();
 }
 
 void isr_timer()

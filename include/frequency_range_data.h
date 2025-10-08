@@ -40,9 +40,9 @@ public:
      * Copy constructor
      * @param other The FrequencyRangeData to copy values from
      */
-    explicit FrequencyRangeData(const FrequencyRangeData* other) : FrequencyRangeData()
+    FrequencyRangeData(const FrequencyRangeData& other) : FrequencyRangeData()
     {
-        Update(*other);
+        Update(other);
     }
 
     /**
