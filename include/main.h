@@ -8,6 +8,7 @@
 #include <atomic>
 #include "frequency_range_data.h"
 
+#define PIN_IN_DEBUG GPIO_NUM_17            //Input pin to indicate debugging
 #define PIN_IN_TOF_0 A2                     //Input pin for first TOF sensor
 #define PIN_IN_TOF_1 A3                     //Input pin for second TOF sensor
 #define PIN_IN_ZERO A6                      //Input pin to zero sensors
@@ -22,7 +23,7 @@
 #define AUDIO_CHANNEL_0 DAC1                //DAC channel for PIN_OUT_AUDIO_0
 #define AUDIO_CHANNEL_1 DAC2                //DAC channel for PIN_OUT_AUDIO_1
 
-#define BUFFER_ZERO 32                      //Add buffer when zeroing to help account for noise
+#define BUFFER_ZERO 48                      //Add buffer when zeroing to help account for noise
 #define TIMER_INTERVAL 50000                //Frequency at which update timer should trigger
 
 /**
@@ -83,8 +84,13 @@ void isr_zero();
 void isr_calibrate();
 
 /**
- * @return A string containing general info on current state
+ * Callback for debugging switch interrupt
  */
-std::string get_debug_info();
+void isr_debug();
+
+/**
+ * Print a string containing general info on current state, if debugging
+ */
+void print_debug_info();
 
 #endif //AUDIO_CONTROLLER_MAIN_H

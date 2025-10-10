@@ -13,14 +13,11 @@
 
 class TOFSensor
 {
-    /**
-     * Round sensor values to prev multiple of this
-     */
-    constexpr static int ROUNDING = 16;
+    constexpr static uint16_t ROUNDING_CM = 2;
 
-    constexpr static uint16_t ZERO_DFT = 1000;
+    constexpr static uint16_t ZERO_DFT = 700;
 
-    constexpr static uint16_t MIN_DFT = 1150;
+    constexpr static uint16_t MIN_DFT = 700;
 
     constexpr static uint16_t MAX_DFT = INPUT_MAX_VALUE;
 
@@ -64,24 +61,31 @@ public:
         if (pin == PIN_INVALID)
             return 0;
 
-        //Read current value
-        const auto sensor_value = analogRead(pin);
-
-        //Round sensor value
-        auto rounded = ROUNDING * static_cast<uint16_t>(std::floor(sensor_value / (ROUNDING * 1.)));
+        //Read current value in millivolts
+        //analogReadMilliVolts returns an uint32, but it should never
+        //get anywhere near the max uint16, so will cast to uint16
+        const auto sensor_value = static_cast<uint16_t>(std::min(static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()), analogReadMilliVolts(pin)));
 
         //Subtract zero
         if (consider_zero)
         {
             const auto current_zero = zero.load();
 
-            if (rounded > current_zero)
-                rounded -= current_zero;
-            else
-                rounded = 0;
+            if (sensor_value > current_zero)
+                return sensor_value - current_zero;
+
+            return 0;
         }
 
-        return rounded;
+        return sensor_value;
+    }
+
+    /**
+     * @return The current value of the attached pin, converted to centimeters
+     */
+    uint16_t GetValueCm() const
+    {
+        return GetDistanceCm(GetValue(true));
     }
 
     /**
@@ -156,6 +160,19 @@ public:
     }
 
     /**
+     * Get the range of valid values that can be outputted by the sensor,
+     * converted to cm, and store them in the given reference parameters
+     * @param out_min Reference param that min value will be put in
+     * @param out_max Reference param that max value will be put in
+     */
+    void OutputRangeCm(uint16_t& out_min, uint16_t& out_max) const
+    {
+        OutputRange(out_min, out_max, true);
+        out_min = GetDistanceCm(out_min);
+        out_max = GetDistanceCm(out_max);
+    }
+
+    /**
      * Return the current value of the pin. Get the range of valid values that can be outputted by the sensor,
      * and store them in the given reference parameters
      * @param out_min Reference param that min value will be put in
@@ -167,6 +184,19 @@ public:
     {
         OutputRange(out_min, out_max, consider_zero);
         return GetValue(consider_zero);
+    }
+
+    /**
+     * Return the current value of the pin. Get the range of valid values that can be outputted by the sensor,
+     * in cm, and store them in the given reference parameters
+     * @param out_min Reference param that min value will be put in
+     * @param out_max Reference param that max value will be put in
+     * @return The current value of the pin, converted to cm
+     */
+    uint16_t GetValueAndRangeCm(uint16_t& out_min, uint16_t& out_max) const
+    {
+        OutputRangeCm(out_min, out_max);
+        return GetValueCm();
     }
 
     /**
@@ -284,14 +314,50 @@ public:
     void WriteToStringStream(std::stringstream& stream) const
     {
         uint16_t value_min, value_max;
-        OutputRange(value_min, value_max);
+        uint16_t value_min_cm, value_max_cm;
+        OutputRange(value_min, value_max, true);
+        OutputRangeCm(value_min_cm, value_max_cm);
 
-        stream << "Sensor| Pin: " << static_cast<uint16_t>(pin)
-            << "; Zero: " << zero.load()
-            << "; Min: " << value_min
-            << "; Max: " << value_max
+        stream << "Sensor | Pin: " << static_cast<uint16_t>(pin)
+            << "; Zero: " << zero.load() << "mV"
+            << "; Min: " << value_min << "mV (" << value_min_cm << "cm)"
+            << "; Max: " << value_max << "mV (" << value_max_cm << "cm)"
             << "; MinMax: " << minmax.load();
             ;
+    }
+
+    static uint16_t GetDistanceCm(const uint32_t millivolts)
+    {
+        const double volts = millivolts / 1000.;
+
+        //From datasheet - a voltage below about 0.4 is ~0
+        constexpr double MIN_VOLTAGE = 0.4;
+
+        if (volts <= MIN_VOLTAGE)
+            return 0;
+
+        //Lines of best fit based on data in datasheet.
+        //More accurate if use a different function for
+        //each side of the cutoff
+        constexpr double CUTOFF = 70;
+        const double distance_cm = volts >= CUTOFF
+            ? 249 * std::pow(volts, 2) - 500 * volts + 320
+            : 11.7 * std::pow(volts, 2) - 70.2 * volts + 122;
+
+        //Round value
+        const double rounded = ROUNDING_CM * std::round(distance_cm / ROUNDING_CM);
+
+        //For any value that the sensor can actually produce (~3V max), distance
+        //won't be more than 150cm. Clamp for safety, but not actually a concern.
+        return static_cast<uint16_t>(
+            std::max(
+                0.,
+                std::min(
+                    1. * std::numeric_limits<uint16_t>::max(),
+                    rounded
+                )
+            )
+        );
     }
 };
 
@@ -366,6 +432,18 @@ public:
 
     /**
      * @param i Sensor index
+     * @return The value of the ith sensor, converted to cm
+     */
+    uint16_t GetSensorValueCm(const int i) const
+    {
+        if (i < 0 || i >= SENSORS_COUNT)
+            throw std::out_of_range("Invalid sensor index.");
+
+        return sensors[i].GetValueCm();
+    }
+
+    /**
+     * @param i Sensor index
      * @param out_min Reference param that min value of the ith sensor will be put in
      * @param out_max Reference param that max value of the ith sensor will be put in
      * @return The value of the ith sensor
@@ -376,6 +454,20 @@ public:
             throw std::out_of_range("Invalid sensor index.");
 
         return sensors[i].GetValueAndRange(out_min, out_max, true);
+    }
+
+    /**
+     * @param i Sensor index
+     * @param out_min Reference param that min value of the ith sensor, converted to cm, will be put in
+     * @param out_max Reference param that max value of the ith sensor, converted to cm, will be put in
+     * @return The value of the ith sensor, converted to cm
+     */
+    uint16_t GetSensorValueCm(const int i, uint16_t& out_min, uint16_t& out_max) const
+    {
+        if (i < 0 || i >= SENSORS_COUNT)
+            throw std::out_of_range("Invalid sensor index.");
+
+        return sensors[i].GetValueAndRangeCm(out_min, out_max);
     }
 
     std::string ToString(const bool write_value = false) const
@@ -398,7 +490,10 @@ public:
 
             if (write_value)
             {
-                stream << " [" << sensor.GetValue(true) << "]";
+                const auto value = sensor.GetValue(true);
+                const auto value_cm = TOFSensor::GetDistanceCm(value);
+
+                stream << " [" << value << "mV / " << value_cm << "cm]";
             }
 
             stream << std::endl;

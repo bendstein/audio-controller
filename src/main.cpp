@@ -28,6 +28,7 @@ constexpr uint8_t audio_channels[] = { AUDIO_CHANNEL_0, AUDIO_CHANNEL_1 };
 auto volume = new std::atomic_uint16_t(INPUT_MAX_VALUE);
 
 //Flags
+std::atomic_bool flag_debugging {};
 std::atomic_bool flag_isr_calibration_zero {};
 std::atomic_bool flag_isr_calibration_range {};
 
@@ -43,10 +44,8 @@ void setup() {
             frequencies[i].store(frequency_ranges[i].GetMin());
         }
 
-        //Write some initial debug info
-        Serial.println(get_debug_info().c_str());
-
         //Setup pins
+        pinMode(PIN_IN_DEBUG, PULLDOWN | INPUT);
         pinMode(PIN_IN_TOF_0, PULLDOWN | INPUT);
         pinMode(PIN_IN_TOF_1, PULLDOWN | INPUT);
         pinMode(PIN_IN_ZERO, PULLDOWN | INPUT);
@@ -65,11 +64,16 @@ void setup() {
 
         timerAlarmEnable(timer);
 
-        //Clear flags
+        //Init flags
+        flag_debugging.store(digitalRead(PIN_IN_DEBUG) == HIGH);
         flag_isr_calibration_zero.store(false);
         flag_isr_calibration_range.store(false);
 
+        //Write some initial debug info
+        print_debug_info();
+
         //Setup interrupts
+        attachInterrupt(digitalPinToInterrupt(PIN_IN_DEBUG), isr_debug, CHANGE);
         attachInterrupt(digitalPinToInterrupt(PIN_IN_ZERO), isr_zero, RISING);
         attachInterrupt(digitalPinToInterrupt(PIN_IN_CALIBRATE), isr_calibrate, RISING);
 
@@ -85,8 +89,13 @@ void setup() {
 
 void loop()
 {
+    static uint64_t n = 0;
+
     try
     {
+        //Double check debugging
+        // flag_debugging.store(digitalRead(PIN_IN_DEBUG) == HIGH);
+
         //Handle calibration flags
         const auto calibration_state_initial = calibration_state;
         auto handle_calibration_type = CalibrationState::None;
@@ -129,8 +138,14 @@ void loop()
         //If calibration state changed, print debug info
         if (calibration_state_initial != calibration_state)
         {
-            Serial.println(get_debug_info().c_str());
+            print_debug_info();
         }
+
+        n = (n + 1) % std::numeric_limits<uint64_t>::max();
+
+        //Periodically print debug info
+        if (n % 25000 == 0)
+            print_debug_info();
 
         const auto t = micros();
 
@@ -234,7 +249,7 @@ void update_frequency()
 double calculate_frequency(const int sensor, const FrequencyRangeData &frequency_range)
 {
     uint16_t sensor_min, sensor_max;
-    const auto sensor_value = sensors.GetSensorValue(sensor, sensor_min, sensor_max);
+    const auto sensor_value = sensors.GetSensorValueCm(sensor, sensor_min, sensor_max);
 
     //Zero frequency
     if (sensor_value == 0)
@@ -305,8 +320,12 @@ CalibrationState handle_calibration(const CalibrationState toggle_state)
     return next_calibration_state;
 }
 
-std::string get_debug_info()
+void print_debug_info()
 {
+    //Skip if not debugging
+    if (!flag_debugging.load())
+        return;
+
     std::stringstream stream {};
 
     const auto vol = volume->load();
@@ -332,7 +351,7 @@ std::string get_debug_info()
 
     sensors.WriteToStringStream(stream, true);
 
-    return stream.str();
+    Serial.println(stream.str().c_str());
 }
 
 void isr_timer()
@@ -350,4 +369,9 @@ void isr_calibrate()
 {
     DEBOUNCE_MS(250)
     flag_isr_calibration_range.store(true);
+}
+
+void isr_debug()
+{
+    // flag_debugging.store(analogRead(PIN_IN_DEBUG) >= (MAX_INPUT / 2));
 }
