@@ -15,47 +15,57 @@ class TOFSensor
 {
     constexpr static uint16_t ROUNDING_CM = 2;
 
-    constexpr static uint16_t ZERO_DFT = 700;
-
-    constexpr static uint16_t MIN_DFT = 700;
-
-    constexpr static uint16_t MAX_DFT = INPUT_MAX_VALUE;
-
-    /**
-     * GPIO PIN
-     */
     uint8_t pin = PIN_INVALID;
+    std::atomic_uint32_t minmax { CombineU16(ZERO_DFT_MV, MAX_DFT_CM) };
 
-    /**
-     * The max value that the sensor produces when not being interacted
-     * with.
-     */
-    std::atomic_uint16_t zero { ZERO_DFT };
-
-    /**
-     * The range of values that the sensor can produce when it is
-     * being interacted with. Each is a 16-bit, unsigned integer,
-     * with the max as the most-significant 16 bits and the min
-     * as the least-significant 16 bits.
-     */
-    std::atomic_uint32_t minmax { MIN_DFT | (MAX_DFT << 16) };
-
-    TOFSensor(const uint8_t pin, const uint16_t zero, const uint32_t minmax) : pin(pin), zero(zero), minmax(minmax) { }
-
+    TOFSensor(const uint8_t pin, const uint32_t minmax) : pin(pin), minmax(minmax) {}
 public:
-    TOFSensor(const uint8_t pin, const uint16_t zero, const uint16_t min, const uint16_t max) : TOFSensor(pin, zero, min | (max << 16)) { }
+    constexpr static uint16_t ZERO_DFT_MV = 500;
+    constexpr static uint16_t ABS_MIN_DIST_V = 1;
+    constexpr static uint16_t MAX_DFT_CM = 60;
 
-    TOFSensor(const TOFSensor& other) : TOFSensor(other.pin, other.zero, other.minmax) { }
-
-    explicit TOFSensor(const uint8_t pin) : TOFSensor(pin, ZERO_DFT, MIN_DFT, MAX_DFT) { }
-
+    TOFSensor(const uint8_t pin, const uint16_t zero_mv, const uint16_t max_cm) : TOFSensor(pin, CombineU16(zero_mv, max_cm)) {}
+    explicit TOFSensor(const uint8_t pin) : TOFSensor(pin, ZERO_DFT_MV, MAX_DFT_CM) {}
     TOFSensor() : TOFSensor(PIN_INVALID) {}
+    TOFSensor(const TOFSensor &other) : TOFSensor(other.pin, other.minmax) {}
 
-    /**
-     * @param consider_zero If true, reduce value to account for zero
-     * @return The current value of the attached pin
-     */
-    uint16_t GetValue(const bool consider_zero = false) const
+    uint8_t GetPin() const { return pin; }
+    void SetPin(const uint8_t new_pin) { pin = new_pin; }
+
+    uint16_t GetZero() const { return U32GetComponentU16(minmax.load(), false); }
+    void SetZero(const uint16_t new_zero)
+    {
+        //Update zero component of minmax, retrying if changed elsewhere during attempt
+        while (true)
+        {
+            auto current_minmax = minmax.load();
+            const auto new_minmax = U32UpdateU16(current_minmax, new_zero, false);
+
+            if (minmax.compare_exchange_weak(current_minmax, new_minmax))
+                break;
+        }
+    }
+
+    uint16_t GetMax() const { return U32GetComponentU16(minmax.load(), true); }
+    void SetMax(const uint16_t new_max_cm)
+    {
+        //Update max component of minmax, retrying if changed elsewhere during attempt
+        while (true)
+        {
+            auto current_minmax = minmax.load();
+            const auto new_minmax = U32UpdateU16(current_minmax, new_max_cm, true);
+
+            if (minmax.compare_exchange_weak(current_minmax, new_minmax))
+                break;
+        }
+    }
+
+    void GetBounds(uint16_t &zero_mv, uint16_t &max_cm) const
+    {
+        SplitU32(minmax.load(), zero_mv, max_cm);
+    }
+    
+    uint16_t GetCurrentValueMillivolts() const
     {
         //Return 0 if invalid pin
         if (pin == PIN_INVALID)
@@ -66,183 +76,48 @@ public:
         //get anywhere near the max uint16, so will cast to uint16
         const auto sensor_value = static_cast<uint16_t>(std::min(static_cast<uint32_t>(std::numeric_limits<uint16_t>::max()), analogReadMilliVolts(pin)));
 
-        //Subtract zero
-        if (consider_zero)
-        {
-            const auto current_zero = zero.load();
-
-            if (sensor_value > current_zero)
-                return sensor_value - current_zero;
-
-            return 0;
-        }
-
         return sensor_value;
     }
 
-    /**
-     * @return The current value of the attached pin, converted to centimeters
-     */
-    uint16_t GetValueCm() const
+    uint16_t GetCurrentValueMillivolts(uint16_t &zero_mv, uint16_t &max_cm) const
     {
-        return GetDistanceCm(GetValue(true));
+        GetBounds(zero_mv, max_cm);
+        return GetCurrentValueMillivolts();
     }
 
-    /**
-     * @return The current associated pin
-     */
-    uint8_t GetPin() const
+    uint16_t GetCurrentDistance() const
     {
-        return pin;
+        const auto current_value_millivolts = GetCurrentValueMillivolts();
+        return GetDistance(current_value_millivolts, GetZero());
     }
 
-    /**
-     * Set the associated pin
-     */
-    void SetPin(const uint8_t new_pin)
+    uint16_t GetCurrentDistance(uint16_t &zero_mv, uint16_t &max_cm) const
     {
-        pin = new_pin;
+        GetBounds(zero_mv, max_cm);
+        return GetCurrentDistance();
+    }
+    uint16_t GetCurrentDistance(uint16_t &zero_mv, uint16_t &max_cm, uint16_t &value_mv) const
+    {
+        GetBounds(zero_mv, max_cm);
+        value_mv = GetCurrentValueMillivolts();
+        return GetDistance(value_mv, zero_mv);
     }
 
-    /**
-     * Assign the maximum value that the sensor outputs
-     * when not being interacted with
-     */
-    void SetZero(const uint16_t new_zero)
+    void UpdateZeroIfGreater(const uint16_t new_zero_mv)
     {
-        zero.store(new_zero);
-    }
-
-    /**
-     * Assign the range of valid sensor values
-     */
-    void SetRange(const uint16_t new_min, const uint16_t new_max)
-    {
-        minmax.store(new_min | (new_max << 16));
-    }
-
-    /**
-     * Get the maximum value that the sensor outputs
-     * when not being interacted with
-     */
-    uint16_t GetZero() const
-    {
-        return zero.load();
-    }
-
-    /**
-     * Get the range of valid values that can be outputted by the sensor,
-     * and store them in the given reference parameters
-     * @param out_min Reference param that min value will be put in
-     * @param out_max Reference param that max value will be put in
-     * @param consider_zero If true, reduce output values to account for zero
-     */
-    void OutputRange(uint16_t& out_min, uint16_t& out_max, const bool consider_zero = false) const
-    {
-        const auto range = minmax.load();
-        out_min = range & 0xFFFF;
-        out_max = range >> 16;
-
-        if (consider_zero)
-        {
-            const auto current_zero = zero.load();
-
-            if (out_min > current_zero)
-                out_min -= current_zero;
-            else
-                out_min = 0;
-
-            if (out_max > current_zero)
-                out_max -= current_zero;
-            else
-                out_max = 0;
-        }
-    }
-
-    /**
-     * Get the range of valid values that can be outputted by the sensor,
-     * converted to cm, and store them in the given reference parameters
-     * @param out_min Reference param that min value will be put in
-     * @param out_max Reference param that max value will be put in
-     */
-    void OutputRangeCm(uint16_t& out_min, uint16_t& out_max) const
-    {
-        OutputRange(out_min, out_max, true);
-        out_min = GetDistanceCm(out_min);
-        out_max = GetDistanceCm(out_max);
-    }
-
-    /**
-     * Return the current value of the pin. Get the range of valid values that can be outputted by the sensor,
-     * and store them in the given reference parameters
-     * @param out_min Reference param that min value will be put in
-     * @param out_max Reference param that max value will be put in
-     * @param consider_zero If true, reduce values to account for zero
-     * @return The current value of the pin
-     */
-    uint16_t GetValueAndRange(uint16_t& out_min, uint16_t& out_max, const bool consider_zero = false) const
-    {
-        OutputRange(out_min, out_max, consider_zero);
-        return GetValue(consider_zero);
-    }
-
-    /**
-     * Return the current value of the pin. Get the range of valid values that can be outputted by the sensor,
-     * in cm, and store them in the given reference parameters
-     * @param out_min Reference param that min value will be put in
-     * @param out_max Reference param that max value will be put in
-     * @return The current value of the pin, converted to cm
-     */
-    uint16_t GetValueAndRangeCm(uint16_t& out_min, uint16_t& out_max) const
-    {
-        OutputRangeCm(out_min, out_max);
-        return GetValueCm();
-    }
-
-    /**
-     * Copy values from other instance of self
-     */
-    void CopyValuesFrom(const TOFSensor& other)
-    {
-        zero.store(other.zero.load());
-        minmax.store(other.minmax.load());
-    }
-
-    /**
-     * Copy zero from other instance of self
-     */
-    void CopyZeroFrom(const TOFSensor& other)
-    {
-        zero.store(other.zero.load());
-    }
-
-    /**
-     * Copy range from other instance of self
-     */
-    void CopyRangeFrom(const TOFSensor& other)
-    {
-        minmax.store(other.minmax.load());
-    }
-
-    /**
-     * Update the current value of zero if the new zero
-     * is greater than it.
-     * @todo Can this livelock?
-     */
-    void UpdateZeroIfGreater(const uint16_t new_zero)
-    {
-        //Update the current value for zero with the new value,
-        //retrying if the current value changed during the processed
+        //If new zero is greater than current zero, update zero component of minmax,
+        //retrying if changed elsewhere during attempt
         while (true)
         {
-            auto current_zero = zero.load();
+            auto current_minmax = minmax.load();
+            const auto current_zero = U32GetComponentU16(current_minmax, false);
 
-            if (new_zero > current_zero)
+            if (new_zero_mv > current_zero)
             {
-                if (zero.compare_exchange_weak(current_zero, new_zero))
-                {
-                    break;
-                }
+                const auto new_minmax = U32UpdateU16(current_minmax, new_zero_mv, false);
+                
+                if (minmax.compare_exchange_weak(current_minmax, new_minmax))
+                    break;   
             }
             else
             {
@@ -250,52 +125,22 @@ public:
             }
         }
     }
-
-    /**
-     * Update the current value for min if the new value is less, and update
-     * the current value for max if the new value is greater.
-     * @todo Can this livelock?
-     */
-    void UpdateRangeIfMinMax(const uint16_t new_value)
+    
+    void UpdateMaxIfGreater(const uint16_t new_max_cm)
     {
-        //Clamp bottom to zero
-        const auto current_zero = zero.load();
-        const auto new_value_adj = new_value < current_zero
-            ? current_zero
-            : new_value;
-
-        //Update the current values for minmax with the new value,
-        //retrying if the current value changed during the processed
+        //If new max is greater than current max, update max component of minmax,
+        //retrying if changed elsewhere during attempt
         while (true)
         {
             auto current_minmax = minmax.load();
-            const auto current_min = current_minmax & 0xFFFF;
-            const auto current_max = current_minmax >> 16;
+            const auto current_max = U32GetComponentU16(current_minmax, true);
 
-            bool changed = false;
-            auto new_min = current_min;
-            auto new_max = current_max;
-
-            if (new_value_adj < current_min)
+            if (new_max_cm > current_max)
             {
-                new_min = new_value_adj;
-                changed = true;
-            }
-
-            if (new_value_adj > current_max)
-            {
-                new_max = new_value_adj;
-                changed = true;
-            }
-
-            if (changed)
-            {
-                const auto new_minmax = new_min | (new_max << 16);
-
-                if (this->minmax.compare_exchange_weak(current_minmax, new_minmax))
-                {
-                    break;
-                }
+                const auto new_minmax = U32UpdateU16(current_minmax, new_max_cm, true);
+                
+                if (minmax.compare_exchange_weak(current_minmax, new_minmax))
+                    break;   
             }
             else
             {
@@ -313,36 +158,53 @@ public:
 
     void WriteToStringStream(std::stringstream& stream) const
     {
-        uint16_t value_min, value_max;
-        uint16_t value_min_cm, value_max_cm;
-        OutputRange(value_min, value_max, true);
-        OutputRangeCm(value_min_cm, value_max_cm);
+        uint16_t current_zero_mv = 0, current_max_cm = 0;
+        const auto current_minmax = minmax.load();
+        SplitU32(current_minmax, current_zero_mv, current_max_cm);
 
         stream << "Sensor | Pin: " << static_cast<uint16_t>(pin)
-            << "; Zero: " << zero.load() << "mV"
-            << "; Min: " << value_min << "mV (" << value_min_cm << "cm)"
-            << "; Max: " << value_max << "mV (" << value_max_cm << "cm)"
-            << "; MinMax: " << minmax.load();
-            ;
+            << "; Zero: " << current_zero_mv << "mV"
+            << "; Max: " << current_max_cm << "cm"
+            << "; MinMax: " << current_minmax;
+        ;
     }
 
-    static uint16_t GetDistanceCm(const uint32_t millivolts)
+    static uint16_t GetDistance(const uint16_t millivolts, const uint16_t zero_millivolts)
     {
         const double volts = millivolts / 1000.;
+        const double zero_volts = zero_millivolts / 1000.;
 
-        //From datasheet - a voltage below about 0.4 is ~0
-        constexpr double MIN_VOLTAGE = 0.4;
+        //From datasheet - a voltage below about 0.4 is ~0. Actual value
+        //is value in variable zero_volts
+        constexpr double EXPECTED_MIN_VOLTAGE = 0.4;
 
-        if (volts <= MIN_VOLTAGE)
+        if (volts <= zero_volts)
+            return 0;
+
+        //Adjust voltage by zero error
+        const auto min_voltage_err = zero_volts - EXPECTED_MIN_VOLTAGE;
+        const double volts_adj = volts + min_voltage_err;
+
+        /*
+         * For the purposes of distance, don't consider anything below voltage threshold
+         * Per the datasheet, all voltages below the max correspond to two distances
+         * (e.g. 2V ~= 30cm and 9cm). Even though it doesn't seem to cause a problem
+         * while sensing an obstruction (or when no obstruction), it causes false
+         * readings when the capacitor drains. This check helps mitigate that.
+         *
+         * The actual distance of 1V is ~63cm, so anything with a distance of
+         * > ~63cm won't be picked up.
+         */
+        if (volts_adj < ABS_MIN_DIST_V)
             return 0;
 
         //Lines of best fit based on data in datasheet.
         //More accurate if use a different function for
         //each side of the cutoff
-        constexpr double CUTOFF = 70;
-        const double distance_cm = volts >= CUTOFF
-            ? 249 * std::pow(volts, 2) - 500 * volts + 320
-            : 11.7 * std::pow(volts, 2) - 70.2 * volts + 122;
+        constexpr double CUTOFF = 0.905; //0.905V ~= 70cm
+        const double distance_cm = volts_adj < CUTOFF
+            ? 249 * std::pow(volts_adj, 2) - 500 * volts_adj + 320
+            : 11.7 * std::pow(volts_adj, 2) - 70.2 * volts_adj + 122;
 
         //Round value
         const double rounded = ROUNDING_CM * std::round(distance_cm / ROUNDING_CM);
@@ -358,6 +220,28 @@ public:
                 )
             )
         );
+    }
+private:
+    static uint32_t CombineU16(const uint16_t a, const uint16_t b) { return a | (b << 16); }
+
+    static void SplitU32(const uint32_t value, uint16_t &a, uint16_t &b)
+    {
+        a = value & 0xFFFF;
+        b = value >> 16;
+    }
+
+    static uint16_t U32GetComponentU16(const uint32_t value, const bool top)
+    {
+        if (top)
+            return value >> 16;
+        return value & 0xFFFF;
+    }
+
+    static uint32_t U32UpdateU16(const uint32_t value, const uint16_t new_part, const bool top)
+    {
+        if (top)
+            return (value & 0xFFFF) | (new_part << 16);
+        return (value & 0xFFFF0000) | new_part;
     }
 };
 
@@ -375,8 +259,8 @@ public:
         for (int i = 0; i < SENSORS_COUNT; i++)
         {
             sensors[i].SetPin(pins[i]);
-            sensors[i].SetZero(0);
-            sensors[i].SetRange(0, INPUT_MAX_VALUE);
+            sensors[i].SetZero(TOFSensor::ZERO_DFT_MV);
+            sensors[i].SetMax(TOFSensor::MAX_DFT_CM);
         }
     }
 
@@ -388,33 +272,31 @@ public:
     {
         for (auto &sensor : sensors)
         {
-            const auto value = sensor.GetValue();
-
             //If flag is set, reset sensor zero to 0
             if (clear_current_zeros)
                 sensor.SetZero(0);
 
             //Read value from sensor and apply to zero
+            const auto value = sensor.GetCurrentValueMillivolts();
             sensor.UpdateZeroIfGreater(value);
         }
     }
 
     /**
      *
-     * @param clear_current_range If true, initially reset the range on all sensors
+     * @param clear_current_max If true, initially reset the max distance on all sensors
      */
-    void UpdateRange(const bool clear_current_range = false)
+    void UpdateMax(const bool clear_current_max = false)
     {
         for (auto &sensor : sensors)
         {
-            const auto value = sensor.GetValue();
-
             //If flag is set, reset sensor range to 0
-            if (clear_current_range)
-                sensor.SetRange(std::numeric_limits<uint16_t>::max(), 0);
+            if (clear_current_max)
+                sensor.SetMax(0);
 
             //Read value from sensor and apply to range
-            sensor.UpdateRangeIfMinMax(value);
+            const auto distance = sensor.GetCurrentDistance();
+            sensor.UpdateMaxIfGreater(distance);
         }
     }
 
@@ -422,52 +304,52 @@ public:
      * @param i Sensor index
      * @return The value of the ith sensor
      */
-    uint16_t GetSensorValue(const int i) const
+    uint16_t GetSensorValueMillivolts(const int i) const
     {
         if (i < 0 || i >= SENSORS_COUNT)
             throw std::out_of_range("Invalid sensor index.");
 
-        return sensors[i].GetValue(true);
+        return sensors[i].GetCurrentValueMillivolts();
     }
 
     /**
      * @param i Sensor index
      * @return The value of the ith sensor, converted to cm
      */
-    uint16_t GetSensorValueCm(const int i) const
+    uint16_t GetSensorDistance(const int i) const
     {
         if (i < 0 || i >= SENSORS_COUNT)
             throw std::out_of_range("Invalid sensor index.");
 
-        return sensors[i].GetValueCm();
+        return sensors[i].GetCurrentDistance();
     }
 
     /**
      * @param i Sensor index
-     * @param out_min Reference param that min value of the ith sensor will be put in
-     * @param out_max Reference param that max value of the ith sensor will be put in
+     * @param out_zero_mv Reference param that zero of the ith sensor will be put in
+     * @param out_max_cm Reference param that max value of the ith sensor will be put in
      * @return The value of the ith sensor
      */
-    uint16_t GetSensorValue(const int i, uint16_t& out_min, uint16_t& out_max) const
+    uint16_t GetSensorValueMillivolts(const int i, uint16_t& out_zero_mv, uint16_t& out_max_cm) const
     {
         if (i < 0 || i >= SENSORS_COUNT)
             throw std::out_of_range("Invalid sensor index.");
 
-        return sensors[i].GetValueAndRange(out_min, out_max, true);
+        return sensors[i].GetCurrentValueMillivolts(out_zero_mv, out_max_cm);
     }
 
     /**
      * @param i Sensor index
-     * @param out_min Reference param that min value of the ith sensor, converted to cm, will be put in
-     * @param out_max Reference param that max value of the ith sensor, converted to cm, will be put in
-     * @return The value of the ith sensor, converted to cm
+     * @param out_zero_mv Reference param that zero of the ith sensor will be put in
+     * @param out_max_cm Reference param that max value of the ith sensor will be put in
+     * @return The distance read by the ith sensor
      */
-    uint16_t GetSensorValueCm(const int i, uint16_t& out_min, uint16_t& out_max) const
+    uint16_t GetSensorDistance(const int i, uint16_t& out_zero_mv, uint16_t& out_max_cm) const
     {
         if (i < 0 || i >= SENSORS_COUNT)
             throw std::out_of_range("Invalid sensor index.");
 
-        return sensors[i].GetValueAndRangeCm(out_min, out_max);
+        return sensors[i].GetCurrentDistance(out_zero_mv, out_max_cm);
     }
 
     std::string ToString(const bool write_value = false) const
@@ -490,10 +372,13 @@ public:
 
             if (write_value)
             {
-                const auto value = sensor.GetValue(true);
-                const auto value_cm = TOFSensor::GetDistanceCm(value);
+                uint16_t zero_mv = 0, max_cm = 0, value_mv = 0;
+                const auto distance = sensor.GetCurrentDistance(zero_mv, max_cm, value_mv);
+                const auto ratio = max_cm == 0
+                    ? 0
+                    : static_cast<uint16_t>(std::round((100. * distance) / max_cm));
 
-                stream << " [" << value << "mV / " << value_cm << "cm]";
+                stream << " [" << value_mv << "mV / " << distance << "cm - " << ratio << "%]";
             }
 
             stream << std::endl;

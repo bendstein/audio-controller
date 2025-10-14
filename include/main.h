@@ -26,6 +26,9 @@
 #define BUFFER_ZERO 48                      //Add buffer when zeroing to help account for noise
 #define TIMER_INTERVAL 50000                //Frequency at which update timer should trigger
 
+#define INITIAL_ZERO_ITERATIONS 10          //During setup, loop this many times while zeroing
+#define INITIAL_ZERO_DELAY_MICRO 25         //During setup, delay this many microseconds between loops while zeroing
+
 /**
  * Whether sensors are being calibrated, and if so,
  * which type
@@ -82,11 +85,6 @@ void isr_zero();
  * Callback for calibrate button interrupt
  */
 void isr_calibrate();
-
-/**
- * Callback for debugging switch interrupt
- */
-void isr_debug();
 
 /**
  * Print a string containing general info on current state, if debugging

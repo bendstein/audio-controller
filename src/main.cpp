@@ -15,8 +15,8 @@ auto sensors = TOFSensorDriver(sensor_pins);
 //Range of output frequencies to map sensors to
 const FrequencyRangeData frequency_ranges[TOFSensorDriver::SENSORS_COUNT]
 {
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::A, 4), GetMusicalNoteFrequency(MusicalNote::A, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4))
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::B, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 5), GetMusicalNoteFrequency(MusicalNote::B, 4))
 };
 
 //The audio frequency to play based on the last-read input from sensors
@@ -73,12 +73,15 @@ void setup() {
         print_debug_info();
 
         //Setup interrupts
-        attachInterrupt(digitalPinToInterrupt(PIN_IN_DEBUG), isr_debug, CHANGE);
         attachInterrupt(digitalPinToInterrupt(PIN_IN_ZERO), isr_zero, RISING);
         attachInterrupt(digitalPinToInterrupt(PIN_IN_CALIBRATE), isr_calibrate, RISING);
 
-        //Zero
-        sensors.UpdateZeros();
+        //Zero sensors
+        for (int i = 0; i < INITIAL_ZERO_ITERATIONS; i++)
+        {
+            sensors.UpdateZeros();
+            delayMicroseconds(INITIAL_ZERO_DELAY_MICRO);
+        }
     }
     catch (std::exception& e)
     {
@@ -93,8 +96,8 @@ void loop()
 
     try
     {
-        //Double check debugging
-        // flag_debugging.store(digitalRead(PIN_IN_DEBUG) == HIGH);
+        //Check debugging
+        flag_debugging.store(digitalRead(PIN_IN_DEBUG) == HIGH);
 
         //Handle calibration flags
         const auto calibration_state_initial = calibration_state;
@@ -144,7 +147,7 @@ void loop()
         n = (n + 1) % std::numeric_limits<uint64_t>::max();
 
         //Periodically print debug info
-        if (n % 25000 == 0)
+        if (n % 15000 == 0)
             print_debug_info();
 
         const auto t = micros();
@@ -248,24 +251,24 @@ void update_frequency()
 
 double calculate_frequency(const int sensor, const FrequencyRangeData &frequency_range)
 {
-    uint16_t sensor_min, sensor_max;
-    const auto sensor_value = sensors.GetSensorValueCm(sensor, sensor_min, sensor_max);
+    uint16_t sensor_zero_mv, sensor_max_cm;
+    const auto sensor_distance = sensors.GetSensorDistance(sensor, sensor_zero_mv, sensor_max_cm);
 
-    //Zero frequency
-    if (sensor_value == 0)
+    //If invalid max distance for sensor, return 0
+    if (sensor_max_cm == 0)
         return 0;
 
-    //Invalid range of sensor values
-    if (sensor_max <= sensor_min)
+    //If distance is 0, return 0
+    if (sensor_distance == 0)
         return 0;
 
-    //Clamp value to sensor range max
-    const double sensor_value_clamped = sensor_value > sensor_max
-        ? sensor_max
-        : sensor_value;
+    //Clamp value to max
+    const double sensor_distance_clamped = sensor_distance > sensor_max_cm
+        ? sensor_max_cm
+        : sensor_distance;
 
     //Get ratio into range that sensor value is at
-    const auto ratio = (sensor_value_clamped - sensor_min) / (sensor_max - sensor_min);
+    const auto ratio = sensor_distance_clamped / sensor_max_cm;
 
     //Map ratio to range of frequencies
     double frequency_min, frequency_max;
@@ -309,7 +312,7 @@ CalibrationState handle_calibration(const CalibrationState toggle_state)
                 sensors.UpdateZeros(state_change);
                 break;
             case CalibrationState::Calibrating: //Update input ranges
-                sensors.UpdateRange(state_change);
+                sensors.UpdateMax(state_change);
                 break;
             default: ;
         }
@@ -369,9 +372,4 @@ void isr_calibrate()
 {
     DEBOUNCE_MS(250)
     flag_isr_calibration_range.store(true);
-}
-
-void isr_debug()
-{
-    // flag_debugging.store(analogRead(PIN_IN_DEBUG) >= (MAX_INPUT / 2));
 }
