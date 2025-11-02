@@ -151,7 +151,7 @@ public:
 
     std::string ToString() const
     {
-        std::stringstream stream {};
+        std::stringstream stream{};
         WriteToStringStream(stream);
         return stream.str();
     }
