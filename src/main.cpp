@@ -269,7 +269,7 @@ void isr_debug_toggle()
 
 void isr_rotary_encoder(const bool clockwise)
 {
-    DEBOUNCE_MS(100)
+    DEBOUNCE_MS(75)
 
     auto current_test_flag = flag_test.load();
     const auto new_test = test.load() + (clockwise ? 1 : -1);

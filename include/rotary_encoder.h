@@ -10,22 +10,6 @@
 
 typedef void RotaryEncoderCallback(bool clockwise);
 
-enum RotaryEncoderState : uint8_t
-{
-    /**
-     * Start
-     */
-    Start,
-    /**
-     * Start --> Pin A High ; Expecting Pin B High for CW
-     */
-    AWaitingB,
-    /**
-     * Start --> Pin B High ; Expecting Pin A High for CCW
-     */
-    BWaitingA
-};
-
 class RotaryEncoder
 {
 public:
@@ -42,105 +26,118 @@ private:
      */
     const uint8_t pin_b;
 
-    /**
-     * Current state of the rotary encoder
-     */
-    RotaryEncoderState state = RotaryEncoderState::Start;
+    uint8_t state: 7;
+
+    uint8_t direction: 1;
 
     /**
      * Function pointer to execute on interrupt
      */
     RotaryEncoderCallback* callback;
 
-    /**
-     * Last time the encoder state changed
-     */
-    long unsigned last_ts = 0;
-
-    /**
-     * @param is_input_a Which pin triggered the update
-     */
-    void ChangeState(const bool is_input_a)
+    void Update(const uint8_t new_state)
     {
-        //Reset state machine if inactive for a while
-        const auto current_ts = millis();
+        const auto prev_state = state;
 
-        if (current_ts - last_ts > INACTIVE_THRESHOLD_MS)
+        //A valid transition must differ by exactly 1 bit
+        const auto state_diff = new_state ^ prev_state;
+
+        if (state_diff == 0 || (state_diff & (state_diff - 1)) != 0) //Invalid
         {
-            state = RotaryEncoderState::Start;
+            state = 0;
+            return;
         }
 
-        last_ts = current_ts;
-
-        switch (state)
+        //If in start state, determine direction, update, and return
+        if (prev_state == 0)
         {
-            case RotaryEncoderState::Start:
+            /*
+             * new_state must either be 0b01 or 0b10 due
+             * to previous conditions, so can determine
+             * direction by checking lsb
+             */
+            direction = new_state & 0b01;
+            state = new_state;
+
+            return;
+        }
+
+        //Verify that transition is valid
+
+        //For counterclockwise, flip bits on new state
+        //so that state machine is unchanged
+        const auto new_state_normalized = (direction == 1)
+            ? new_state
+            : ((new_state & 0b01) << 1) + ((new_state & 0b10) >> 1);
+
+        switch (prev_state)
+        {
+            case 0b01: // 01 => 11
             {
-                state = is_input_a
-                    ? RotaryEncoderState::AWaitingB
-                    : RotaryEncoderState::BWaitingA;
-            }
-            break;
-            case RotaryEncoderState::AWaitingB:
-            {
-                if (is_input_a) //Unchanged
-                { }
-                else //Triggered A, then B -> Clockwise
+                if (new_state_normalized == 0b11)
+                {}
+                else //Invalid
                 {
-                    state = RotaryEncoderState::Start;
-                    callback(true);
+                    state = 0;
+                    return;
                 }
             }
             break;
-            case RotaryEncoderState::BWaitingA:
+            case 0b10: // 10 => 00
             {
-                if (is_input_a) //Triggered B, then A -> Counter-clockwise
+                if (new_state_normalized == 0b00)
+                {}
+                else //Invalid
                 {
-                    state = RotaryEncoderState::Start;
-                    callback(false);
+                    state = 0;
+                    return;
                 }
-                else //Unchanged
-                { }
             }
             break;
-            default: //Invalid; move to start
+            case 0b11: // 11 => 10
             {
-                state = RotaryEncoderState::Start;
+                if (new_state_normalized == 0b10)
+                {}
+                else //Invalid
+                {
+                    state = 0;
+                    return;
+                }
             }
             break;
+            default: //?
+                state = 0;
+                return;
+        }
+
+        //At this point, state must be valid. Update.
+        state = new_state;
+
+        //Execute callback if at end state
+        if (state == 0)
+        {
+            callback(direction == 1);
         }
     }
 
+    uint8_t GetState() const
+    {
+        return (digitalRead(pin_a) == 0? 0 : 1)
+            | ((digitalRead(pin_b) == 0? 0 : 1) << 1);
+    }
+
     /**
-     * Handle a rising-edge interrupt on a rotary encoder's pin a
+     * Handle an interrupt on either pin of the encoder
      * @param rotary_encoder_pointer Address which should point to a rotary encoder. void* so that attachInterruptArg can be called.
      */
-    static void HandleInterruptA(void* rotary_encoder_pointer)
+    static void HandleInterrupt(void* rotary_encoder_pointer)
     {
-        DEBOUNCE_MS(30)
-
         if (rotary_encoder_pointer == nullptr) //No rotary encoder is present
             return;
 
         const auto rotary_encoder = static_cast<RotaryEncoder*>(rotary_encoder_pointer);
 
-        rotary_encoder->ChangeState(true);
-    }
-
-    /**
-     * Handle a rising-edge interrupt on a rotary encoder's pin b
-     * @param rotary_encoder_pointer Address which should point to a rotary encoder. void* so that attachInterruptArg can be called.
-     */
-    static void HandleInterruptB(void* rotary_encoder_pointer)
-    {
-        DEBOUNCE_MS(30)
-
-        if (rotary_encoder_pointer == nullptr) //No rotary encoder is present
-            return;
-
-        const auto rotary_encoder = static_cast<RotaryEncoder*>(rotary_encoder_pointer);
-
-        rotary_encoder->ChangeState(false);
+        rotary_encoder->Update(rotary_encoder->GetState());
     }
 
 public:
@@ -151,7 +148,11 @@ public:
      * @param callback Function pointer to execute when rotary encoder is turned
      */
     explicit RotaryEncoder(const uint8_t pin_a = PIN_INVALID, const uint8_t pin_b = PIN_INVALID, RotaryEncoderCallback* callback = nullptr)
-        : pin_a(pin_a), pin_b(pin_b), callback(callback) { }
+        : pin_a(pin_a), pin_b(pin_b), callback(callback)
+    {
+        state = 0;
+        direction = 0;
+    }
 
     /**
      * Attach interrupts to pins, and set pin modes.
@@ -165,8 +166,8 @@ public:
         pinMode(this->pin_a, INPUT | PULLDOWN);
         pinMode(this->pin_b, INPUT | PULLDOWN);
 
-        attachInterruptArg(digitalPinToInterrupt(this->pin_a), HandleInterruptA, this, RISING);
-        attachInterruptArg(digitalPinToInterrupt(this->pin_b), HandleInterruptB, this, RISING);
+        attachInterruptArg(digitalPinToInterrupt(this->pin_a), HandleInterrupt, this, CHANGE);
+        attachInterruptArg(digitalPinToInterrupt(this->pin_b), HandleInterrupt, this, CHANGE);
         return true;
     }
 };
