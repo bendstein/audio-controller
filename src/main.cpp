@@ -32,10 +32,12 @@ static constexpr uint8_t audio_channels[] = { AUDIO_CHANNEL_0, AUDIO_CHANNEL_1 }
 //Value (out of INPUT_MAX_VALUE) representing to volume of the output audio
 static auto volume = new std::atomic_uint16_t(INPUT_MAX_VALUE);
 
+//Amount of time (in microseconds) to delay between iterations when looping over sensors
+static auto sensor_iterate_delay = new std::atomic_uint32_t(SENSOR_ITERATE_DELAY_DFT);
+
 //Flags
 std::atomic_bool flag_debugging {};
-std::atomic_bool flag_test {};
-std::atomic_int test {};
+std::atomic_bool flag_update_frequencies {};
 
 void setup() {
     Serial.begin(9600);
@@ -63,20 +65,20 @@ void setup() {
             pinMode(sensor_select_pin, OUTPUT);
         }
 
-        flag_test.store(true);
-
         //Write some initial debug info
         print_debug_info();
 
-        //Attach interrupts
-        // const auto timer = timerBegin(0, 50, true);
-        // timerAttachInterrupt(timer, isr_timer, true);
-        // timerAlarmWrite(timer, TIMER_INTERVAL, true);
-        // timerAlarmEnable(timer);
-        attachInterrupt(digitalPinToInterrupt(PIN_IN_TOGGLE_DEBUG), isr_debug_toggle, RISING);
+        //Setup timer
+        const auto timer = timerBegin(0, 50, true);
+        timerAttachInterrupt(timer, isr_timer, true);
+        timerAlarmWrite(timer, TIMER_INTERVAL, true);
+        timerAlarmEnable(timer);
 
         //Setup rotary encoder
-        rotary_encoder = new Rotary(PIN_IN_ROT_CYCLE_RATE_A, PIN_IN_ROT_CYCLE_RATE_B, isr_rotary_encoder);
+        rotary_encoder = new Rotary(PIN_IN_ROT_CYCLE_RATE_A, PIN_IN_ROT_CYCLE_RATE_B, rotary_encoder_callback);
+
+        //Attach interrupts
+        attachInterrupt(digitalPinToInterrupt(PIN_IN_TOGGLE_DEBUG), isr_debug_toggle, RISING);
     }
     catch (std::exception& e)
     {
@@ -91,23 +93,25 @@ void loop()
 
     try
     {
-        //Check debugging
+        //Read flags
+        auto should_update_frequencies = flag_update_frequencies.load();
         const auto is_debugging = flag_debugging.load();
 
-        const auto test_count = test.load();
+        //Update frequencies if flag set, and unset flag
+        flag_update_frequencies.compare_exchange_weak(should_update_frequencies, false);
 
-        auto test_test = true;
-
-        if (flag_test.compare_exchange_strong(test_test, false))
+        if (should_update_frequencies)
         {
-            Serial.printf("n = %d\r\n", test_count);
+            update_frequency();
         }
 
         n = (n + 1) % std::numeric_limits<uint64_t>::max();
 
-        //Periodically print debug info
+        //Periodically print debug info if debug flag is set
         if (is_debugging && n % 15000 == 0)
+        {
             print_debug_info();
+        }
 
         const auto t = micros();
 
@@ -188,7 +192,6 @@ uint8_t wave(const uint64_t t, const double scale, const double chord[], const u
     return static_cast<uint8_t>(std::max(0, std::min(DAC_MAX, v)));
 }
 
-
 void update_frequency()
 {
     try
@@ -196,6 +199,11 @@ void update_frequency()
         //Update frequencies based on sensor values
         for (auto i = 0; i < sensors.EffectiveMaxSensorCount(); i++)
         {
+            const auto iterate_delay = sensor_iterate_delay->load();
+
+            if (iterate_delay > 0)
+                delay(iterate_delay);
+
             frequencies[i].store(calculate_frequency(i, frequency_ranges[i]));
         }
     }
@@ -236,10 +244,12 @@ void print_debug_info()
 
     const auto vol = volume->load();
     const auto vol_percent = (100. * vol) / INPUT_MAX_VALUE;
+    const auto iterate_delay = sensor_iterate_delay->load();
 
     stream << std::fixed << std::showpoint << std::setprecision(2)
         << "Volume: " << vol
         << " (" << vol_percent << "%)" << std::endl
+        << "Iterate delay: " << iterate_delay << "ms" << std::endl
         << "Frequencies:" << std::endl;
 
     sensors.WriteToStringStream(stream);
@@ -251,7 +261,8 @@ void print_debug_info()
 
 void isr_timer()
 {
-    update_frequency(); //Update frequencies from sensor values on interval
+    //Set flag to update frequencies from sensor values on interval
+    flag_update_frequencies.store(true);
 }
 
 void isr_debug_toggle()
@@ -269,15 +280,37 @@ void isr_debug_toggle()
     }
 }
 
-void isr_rotary_encoder(const bool clockwise)
+void rotary_encoder_callback(const bool clockwise)
 {
-    // DEBOUNCE_MS(75)
+    static constexpr uint32_t max_safe_delay = std::numeric_limits<uint32_t>::max() - SENSOR_ITERATE_DELAY_STEP;
 
-    auto current_test_flag = flag_test.load();
-    const auto new_test = test.load() + (clockwise ? 1 : -1);
+    auto current_iterate_delay = sensor_iterate_delay->load();
+    uint32_t new_iterate_delay = 0;
 
-    if (flag_test.compare_exchange_strong(current_test_flag, true))
+    //Update iterate delay, clamping to valid range
+    if (clockwise)
     {
-        test.store(new_test);
+        if (current_iterate_delay >= max_safe_delay)
+        {
+            new_iterate_delay = std::numeric_limits<uint32_t>::max();
+        }
+        else
+        {
+            new_iterate_delay = current_iterate_delay + SENSOR_ITERATE_DELAY_STEP;
+        }
     }
+    else
+    {
+        if (current_iterate_delay <= SENSOR_ITERATE_DELAY_STEP)
+        {
+            new_iterate_delay = 0;
+        }
+        else
+        {
+            new_iterate_delay = current_iterate_delay - SENSOR_ITERATE_DELAY_STEP;
+        }
+    }
+
+    //Only update if not somehow changed elsewhere
+    sensor_iterate_delay->compare_exchange_weak(current_iterate_delay, new_iterate_delay);
 }

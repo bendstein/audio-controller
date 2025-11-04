@@ -28,6 +28,9 @@
 
 #define TIMER_INTERVAL 50000                    //Frequency at which update timer should trigger
 
+#define SENSOR_ITERATE_DELAY_DFT 0              //Dft delay when iterating over attached sensors
+#define SENSOR_ITERATE_DELAY_STEP 5             //Step size when adjusting delay for sensor iterate
+
 /**
  * Get the next audio value to output
  * @param t The current time in microseconds
@@ -63,10 +66,10 @@ void isr_timer();
 void isr_debug_toggle();
 
 /**
- * Callback for
+ * Callback for when rotary encoder completes a full turn
  * @param clockwise Whether encoder turned clockwise or counter-clockwise
  */
-void isr_rotary_encoder(bool clockwise);
+void rotary_encoder_callback(bool clockwise);
 
 /**
  * Print a string containing general info on current state, if debugging
