@@ -93,8 +93,8 @@ public:
     Rotary(const byte pin1, const byte pin2, RotaryCallback* callback) : pin1(pin1), pin2(pin2), callback(callback)
     {
         // Set pins to input.
-        pinMode(pin1, INPUT);
-        pinMode(pin2, INPUT);
+        pinMode(pin1, INPUT | PULLDOWN);
+        pinMode(pin2, INPUT | PULLDOWN);
 
         //Attach interrupts
         attachInterruptArg(digitalPinToInterrupt(pin1), process__isr, this, CHANGE);

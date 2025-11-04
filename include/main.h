@@ -29,7 +29,7 @@
 #define TIMER_INTERVAL 50000                    //Frequency at which update timer should trigger
 
 #define SENSOR_ITERATE_DELAY_DFT 0              //Dft delay when iterating over attached sensors
-#define SENSOR_ITERATE_DELAY_STEP 5             //Step size when adjusting delay for sensor iterate
+#define SENSOR_ITERATE_DELAY_STEP 10            //Step size when adjusting delay for sensor iterate
 
 /**
  * Get the next audio value to output

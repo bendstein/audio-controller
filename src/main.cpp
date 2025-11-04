@@ -63,19 +63,20 @@ void setup() {
         for (const auto sensor_select_pin : sensor_select_pins)
         {
             pinMode(sensor_select_pin, OUTPUT);
+            digitalWrite(sensor_select_pin, LOW);
         }
 
         //Write some initial debug info
         print_debug_info();
+
+        //Setup rotary encoder
+        rotary_encoder = new Rotary(PIN_IN_ROT_CYCLE_RATE_A, PIN_IN_ROT_CYCLE_RATE_B, rotary_encoder_callback);
 
         //Setup timer
         const auto timer = timerBegin(0, 50, true);
         timerAttachInterrupt(timer, isr_timer, true);
         timerAlarmWrite(timer, TIMER_INTERVAL, true);
         timerAlarmEnable(timer);
-
-        //Setup rotary encoder
-        rotary_encoder = new Rotary(PIN_IN_ROT_CYCLE_RATE_A, PIN_IN_ROT_CYCLE_RATE_B, rotary_encoder_callback);
 
         //Attach interrupts
         attachInterrupt(digitalPinToInterrupt(PIN_IN_TOGGLE_DEBUG), isr_debug_toggle, RISING);
@@ -284,7 +285,7 @@ void rotary_encoder_callback(const bool clockwise)
 {
     static constexpr uint32_t max_safe_delay = std::numeric_limits<uint32_t>::max() - SENSOR_ITERATE_DELAY_STEP;
 
-    auto current_iterate_delay = sensor_iterate_delay->load();
+    const auto current_iterate_delay = sensor_iterate_delay->load();
     uint32_t new_iterate_delay = 0;
 
     //Update iterate delay, clamping to valid range
@@ -311,6 +312,5 @@ void rotary_encoder_callback(const bool clockwise)
         }
     }
 
-    //Only update if not somehow changed elsewhere
-    sensor_iterate_delay->compare_exchange_weak(current_iterate_delay, new_iterate_delay);
+    sensor_iterate_delay->store(new_iterate_delay);
 }
