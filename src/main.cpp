@@ -3,14 +3,14 @@
 #include "main.h"
 #include "common.h"
 #include "notes.h"
-#include "rotary_encoder.h"
+#include "rotary.h"
 #include "sensor_array_driver.h"
 
 //Attached sensors
 static constexpr uint8_t sensor_select_pins[SensorArrayDriver::SELECT_PIN_COUNT] = { PIN_OUT_SENSOR_SELECT_0, PIN_OUT_SENSOR_SELECT_1, PIN_OUT_SENSOR_SELECT_2 };
 static auto sensors = SensorArrayDriver(PIN_IN_SENSOR, sensor_select_pins);
 
-static auto rotary_encoder = RotaryEncoder(PIN_IN_ROT_CYCLE_RATE_A, PIN_IN_ROT_CYCLE_RATE_B, isr_rotary_encoder);
+static Rotary* rotary_encoder;
 
 //Range of output frequencies to map sensors to
 static const FrequencyRangeData frequency_ranges[SensorArrayDriver::MAX_SENSOR_COUNT] = {
@@ -64,7 +64,6 @@ void setup() {
         }
 
         flag_test.store(true);
-        rotary_encoder.Attach();
 
         //Write some initial debug info
         print_debug_info();
@@ -75,6 +74,9 @@ void setup() {
         // timerAlarmWrite(timer, TIMER_INTERVAL, true);
         // timerAlarmEnable(timer);
         attachInterrupt(digitalPinToInterrupt(PIN_IN_TOGGLE_DEBUG), isr_debug_toggle, RISING);
+
+        //Setup rotary encoder
+        rotary_encoder = new Rotary(PIN_IN_ROT_CYCLE_RATE_A, PIN_IN_ROT_CYCLE_RATE_B, isr_rotary_encoder);
     }
     catch (std::exception& e)
     {
@@ -269,7 +271,7 @@ void isr_debug_toggle()
 
 void isr_rotary_encoder(const bool clockwise)
 {
-    DEBOUNCE_MS(75)
+    // DEBOUNCE_MS(75)
 
     auto current_test_flag = flag_test.load();
     const auto new_test = test.load() + (clockwise ? 1 : -1);

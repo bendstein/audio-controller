@@ -12,8 +12,8 @@
 #define PIN_OUT_DEBUG LED_BUILTIN               //Output pin indicating whether debugging
 #define PIN_IN_TOGGLE_DEBUG GPIO_NUM_15         //Input pin for toggle debug button
 
-#define PIN_IN_ROT_CYCLE_RATE_A GPIO_NUM_32     //Input pin A for cycle-rate rotary encoder
-#define PIN_IN_ROT_CYCLE_RATE_B GPIO_NUM_14     //Input pin B for cycle-rate rotary encoder
+#define PIN_IN_ROT_CYCLE_RATE_A GPIO_NUM_14     //Input pin A for cycle-rate rotary encoder
+#define PIN_IN_ROT_CYCLE_RATE_B GPIO_NUM_32     //Input pin B for cycle-rate rotary encoder
 
 #define PIN_OUT_SENSOR_SELECT_0 GPIO_NUM_12     //Sensor select bit 0
 #define PIN_OUT_SENSOR_SELECT_1 GPIO_NUM_27     //Sensor select bit 1
