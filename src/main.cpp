@@ -14,14 +14,14 @@ static Rotary* rotary_encoder;
 
 //Range of output frequencies to map sensors to
 static const FrequencyRangeData frequency_ranges[SensorArrayDriver::MAX_SENSOR_COUNT] = {
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4))
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 3), GetMusicalNoteFrequency(MusicalNote::C, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C_Sharp, 3), GetMusicalNoteFrequency(MusicalNote::C_Sharp, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::D, 3), GetMusicalNoteFrequency(MusicalNote::D, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::D_Sharp, 3), GetMusicalNoteFrequency(MusicalNote::D_Sharp, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::E, 3), GetMusicalNoteFrequency(MusicalNote::E, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::F, 3), GetMusicalNoteFrequency(MusicalNote::F, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::F_Sharp, 3), GetMusicalNoteFrequency(MusicalNote::F_Sharp, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::G, 3), GetMusicalNoteFrequency(MusicalNote::G, 4))
 };
 
 //The audio frequency to play based on the last-read input from sensors
@@ -58,6 +58,11 @@ void setup() {
 
         pinMode(PIN_OUT_AUDIO_0, OUTPUT);
         pinMode(PIN_OUT_AUDIO_1, OUTPUT);
+
+        for (const auto ch : audio_channels)
+        {
+            dacWrite(ch, 0);
+        }
 
         pinMode(PIN_IN_SENSOR, PULLDOWN | INPUT);
         for (const auto sensor_select_pin : sensor_select_pins)
@@ -223,8 +228,22 @@ double calculate_frequency(const int sensor, const FrequencyRangeData &frequency
     if (sensor_distance_cm == 0)
         return 0;
 
+    //Return 0 if invalid sensor range
+    if (SensorArrayDriver::SENSOR_MIN_DISTANCE > SensorArrayDriver::SENSOR_MAX_DISTANCE
+        || SensorArrayDriver::SENSOR_MAX_DISTANCE == 0)
+        return 0;
+
+    const auto sensor_distance_cm_clamped = std::max(
+        SensorArrayDriver::SENSOR_MIN_DISTANCE,
+        std::min(
+            SensorArrayDriver::SENSOR_MAX_DISTANCE,
+            sensor_distance_cm
+        )
+    );
+
     //Get ratio into range that sensor value is at
-    const auto ratio = 1.; //TODO
+    const auto ratio = (1. * (sensor_distance_cm_clamped - SensorArrayDriver::SENSOR_MIN_DISTANCE))
+        / (SensorArrayDriver::SENSOR_MAX_DISTANCE - SensorArrayDriver::SENSOR_MIN_DISTANCE);
 
     //Map ratio to frequency
     double frequency_min, frequency_max;
@@ -251,11 +270,16 @@ void print_debug_info()
         << "Volume: " << vol
         << " (" << vol_percent << "%)" << std::endl
         << "Iterate delay: " << iterate_delay << "ms" << std::endl
-        << "Frequencies:" << std::endl;
+        << "Sensors:" << std::endl;
 
     sensors.WriteToStringStream(stream);
 
-    stream << std::endl;
+    stream << "Frequencies:" << std::endl;
+
+    for (auto i = 0; i < sensors.EffectiveMaxSensorCount(); i++)
+    {
+        stream << "  - " << static_cast<uint32_t>(i) << ": " << frequencies[i] << "hz" << std::endl;
+    }
 
     Serial.println(stream.str().c_str());
 }
