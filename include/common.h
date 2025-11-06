@@ -22,4 +22,53 @@
     if(dt <= threshold_ms)                  \
         return;                             \
 
+
+/**
+ * Count the number of set bits in an integer value,
+ * using Brian Kernighan's Algorithm
+ * @param unsigned_integer_type The type of integer to create the function for
+ */
+#define COUNT_SET_BITS_TYPED(unsigned_integer_type)     \
+    uint8_t CountSetBits(unsigned_integer_type value)   \
+    {                                                   \
+        uint8_t count = 0;                              \
+                                                        \
+        while (value != 0)                              \
+        {                                               \
+            value = value & (value - 1);                \
+            count++;                                    \
+        }                                               \
+                                                        \
+        return count;                                   \
+    }                                                   \
+                                                        \
+
+/**
+ * Get the last MSB for which a bit is set
+ * @param unsigned_integer_type The type of integer to create the function for
+ */
+#define GET_MAX_SET_BIT_TYPED(unsigned_integer_type)    \
+    uint8_t GetMaxSetBit(unsigned_integer_type value)   \
+    {                                                   \
+        uint8_t count = 0;                              \
+                                                        \
+        while (value != 0)                              \
+        {                                               \
+            value = value >> 1;                         \
+            count++;                                    \
+        }                                               \
+                                                        \
+        return count;                                   \
+    }                                                   \
+                                                        \
+
+
+COUNT_SET_BITS_TYPED(uint32_t)
+COUNT_SET_BITS_TYPED(uint16_t)
+COUNT_SET_BITS_TYPED(uint8_t)
+
+GET_MAX_SET_BIT_TYPED(uint32_t)
+GET_MAX_SET_BIT_TYPED(uint16_t)
+GET_MAX_SET_BIT_TYPED(uint8_t)
+
 #endif //AUDIO_CONTROLLER_UTILS_H

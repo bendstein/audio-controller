@@ -30,6 +30,7 @@
 
 #define SENSOR_ITERATE_DELAY_DFT 0              //Dft delay when iterating over attached sensors
 #define SENSOR_ITERATE_DELAY_STEP 10            //Step size when adjusting delay for sensor iterate
+#define SENSOR_POLL_N 50                        //Period to poll for changes in attached sensors in TIMER_INTERVAL timer
 
 /**
  * Get the next audio value to output

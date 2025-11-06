@@ -18,42 +18,25 @@ class SensorArrayDriver
 public:
     static constexpr uint8_t SELECT_PIN_COUNT = 3;
     static constexpr uint8_t MAX_SENSOR_COUNT = SELECT_PIN_COUNT == 0? 0 : (1 << SELECT_PIN_COUNT);
-    static constexpr uint32_t SELECT_DELAY_MICRO = 50;
+    static constexpr uint32_t SELECT_DELAY_MICRO = 100;
 
     static const uint16_t SENSOR_MIN_MV;
     static const double SENSOR_MIN_V;
     static const uint16_t SENSOR_MAX_MV;
     static const uint16_t SENSOR_MIN_DISTANCE;
     static const uint16_t SENSOR_MAX_DISTANCE;
+    static const uint16_t SENSOR_DETACHED_THRESHOLD_MV;
 
     static uint16_t SensorValueToDistance__Specific(uint16_t value_mv);
 
 private:
     const uint8_t data_pin = PIN_INVALID;
     uint8_t select_pins[SELECT_PIN_COUNT] = {};
+    uint16_t active_sensors = 0;
     uint8_t effective_select_pin_count = SELECT_PIN_COUNT;
     uint8_t effective_max_sensor_count = MAX_SENSOR_COUNT;
 
 public:
-    SensorArrayDriver(const uint8_t data_pin, const uint8_t select_pins[SELECT_PIN_COUNT]) : data_pin(data_pin)
-    {
-        for (auto i = 0; i < SELECT_PIN_COUNT; i++)
-        {
-            this->select_pins[i] = select_pins[i];
-
-            //Don't consider for invalid pins
-            if (select_pins[i] == PIN_INVALID)
-            {
-                effective_select_pin_count = i;
-                effective_max_sensor_count = 1 << effective_select_pin_count;
-                break;
-            }
-        }
-
-        effective_select_pin_count = 0;
-        effective_max_sensor_count = 1;
-    }
-
     uint8_t EffectiveSelectPinCount() const
     {
         return effective_select_pin_count;
@@ -66,10 +49,15 @@ public:
 
     uint16_t ReadSensor(const uint8_t sensor) const
     {
+        //Skip inactive sensor
+        if (!IsSensorActive(sensor))
+            return 0;
+
         //Write to select pins
         for (auto b = 0; b < effective_select_pin_count; b++)
         {
-            digitalWrite(select_pins[b], sensor & (1 << b));
+            const auto shift = 1 << b;
+            digitalWrite(select_pins[b], (sensor & shift) == shift? HIGH : LOW);
         }
 
         //Delay to give multiplexer time to update
@@ -97,6 +85,68 @@ public:
         return SensorValueToDistance(ReadSensor(sensor));
     }
 
+    bool IsSensorActive(const uint8_t sensor) const
+    {
+        const auto shift = 1 << sensor;
+        return (active_sensors & shift) == shift;
+    }
+
+    void RefreshActiveSensors()
+    {
+        //Reinitialize the number of valid select pins and active sensors
+        //so that we can properly read the values for all potentially connected sensors.
+        //Clear any select pins
+        active_sensors = (1 << MAX_SENSOR_COUNT) - 1;
+
+        uint8_t select_pin_count = SELECT_PIN_COUNT;
+
+        for (auto i = 0; i < SELECT_PIN_COUNT; i++)
+        {
+            if (select_pins[i] == PIN_INVALID)
+            {
+                //Only consider up to first invalid pin
+                //(but continue so any following pins can
+                //be cleared)
+                if (select_pin_count != SELECT_PIN_COUNT)
+                    select_pin_count = i;
+                continue;
+            }
+
+            digitalWrite(select_pins[i], LOW);
+        }
+
+        effective_select_pin_count = select_pin_count;
+
+        //Check all potentially attached sensors.
+        //If their value is below a set threshold,
+        //consider the position to be empty
+        uint16_t sensors = 0;
+        for (auto i = 0; i < MAX_SENSOR_COUNT; i++)
+        {
+            const auto sensor_value = ReadSensor(i);
+
+            if (sensor_value > SENSOR_DETACHED_THRESHOLD_MV)
+            {
+                sensors |= (1 << i);
+            }
+        }
+
+        //Clear select pins to prevent unused ones from staying on
+        for (auto i = 0; i < SELECT_PIN_COUNT; i++)
+        {
+            if (select_pins[i] != PIN_INVALID)
+            {
+                digitalWrite(select_pins[i], LOW);
+            }
+        }
+
+        active_sensors = sensors;
+        effective_max_sensor_count = GetMaxSetBit(sensors);
+        effective_select_pin_count = effective_max_sensor_count <= 1
+            ? effective_max_sensor_count
+            : GetMaxSetBit(static_cast<uint8_t>(effective_max_sensor_count - 1));
+    }
+
     std::string ToString() const
     {
         std::stringstream stream {};
@@ -117,15 +167,33 @@ public:
                 stream << ", ";
         }
 
-        stream << "; Sensor count: " << static_cast<uint32_t>(effective_max_sensor_count) << std::endl
-            << std::fixed << std::showpoint << std::setprecision(2);
+        stream << std::endl << "Attached Sensors: ";
+
+        for (auto i = 15; i >= 0; i--)
+        {
+            const auto shift = 1 << i;
+            stream << static_cast<uint32_t>((active_sensors & shift) == shift? 1 : 0);
+        }
+
+        stream << std::endl;
+
+        stream << "Sensor count: " << static_cast<uint32_t>(CountSetBits(active_sensors))
+            << " (Effective: " << static_cast<uint32_t>(effective_max_sensor_count) << ")"
+            << std::endl << std::fixed << std::showpoint << std::setprecision(2);
 
         for (auto i = 0; i < effective_max_sensor_count; i++)
         {
-            uint16_t distance;
-            const auto value = ReadSensor(i, distance);
+            if (IsSensorActive(i))
+            {
+                uint16_t distance;
+                const auto value = ReadSensor(i, distance);
 
-            stream << "  - " << i << ": " << value << "mV (" << distance << "cm)" << std::endl;
+                stream << "  - " << i << ": " << value << "mV (" << distance << "cm)" << std::endl;
+            }
+            else
+            {
+                stream << "  - " << i << ": <inactive>" << std::endl;
+            }
         }
     }
     
@@ -133,13 +201,24 @@ public:
     {
         return SensorValueToDistance__Specific(value_mv);
     }
+
+    SensorArrayDriver(const uint8_t pin_data, const uint8_t pins_select[SELECT_PIN_COUNT])
+        : data_pin(pin_data), effective_select_pin_count(0), effective_max_sensor_count(0)
+    {
+        for (auto i = 0; i < SELECT_PIN_COUNT; i++)
+        {
+            select_pins[i] = pins_select[i];
+        }
+    }
 };
 
 #ifdef SENSOR_TYPE__GP2Y0A02YK
     constexpr uint16_t SensorArrayDriver::SENSOR_MIN_MV = 400; //~400mV zero, per datasheet
     constexpr uint16_t SensorArrayDriver::SENSOR_MAX_MV = 2750; //~2750mV max output, per datasheet
+    constexpr uint16_t SensorArrayDriver::SENSOR_MIN_DISTANCE = 15; //Closest distance in cm (peak mV), per datasheet
+    constexpr uint16_t SensorArrayDriver::SENSOR_MAX_DISTANCE = 150; //Furthest distance in cm (bottom mV excluding very close), per datasheet
     constexpr double SensorArrayDriver::SENSOR_MIN_V = SENSOR_MIN_MV / 1000.;
-
+    constexpr uint16_t SensorArrayDriver::SENSOR_DETACHED_THRESHOLD_MV = 200;
     /**
      * Distance corresponding to given GP2Y0A02YK sensor voltage
      */
@@ -196,6 +275,7 @@ public:
     constexpr uint16_t SensorArrayDriver::SENSOR_MIN_MV = 0;
     constexpr uint16_t SensorArrayDriver::SENSOR_MAX_MV = 1;
     constexpr double SensorArrayDriver::SENSOR_MIN_V = SENSOR_MIN_MV / 1000.;
+    constexpr uint16_t SensorArrayDriver::SENSOR_DETACHED_THRESHOLD_MV = 200;
 
     /**
      * Distance corresponding to given GP2Y0E02A sensor voltage
@@ -208,6 +288,7 @@ public:
     constexpr uint16_t SENSOR_MIN_MV = 0;
     constexpr uint16_t SENSOR_MAX_MV = 1;
     constexpr double SENSOR_MIN_V = SENSOR_MIN_MV / 1000.;
+    constexpr uint16_t SensorArrayDriver::SENSOR_DETACHED_THRESHOLD_MV = 0;
 
     /**
      * Distance corresponding to given sensor voltage, if no sensor
@@ -219,8 +300,5 @@ public:
     }
 #endif
 #endif
-
-const uint16_t SensorArrayDriver::SENSOR_MIN_DISTANCE = SensorArrayDriver::SensorValueToDistance(SensorArrayDriver::SENSOR_MIN_MV);
-const uint16_t SensorArrayDriver::SENSOR_MAX_DISTANCE = SensorArrayDriver::SensorValueToDistance(SensorArrayDriver::SENSOR_MAX_MV);
 
 #endif //AUDIO_CONTROLLER_TOF_DRIVER_H

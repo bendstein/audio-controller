@@ -38,6 +38,7 @@ static auto sensor_iterate_delay = new std::atomic_uint32_t(SENSOR_ITERATE_DELAY
 //Flags
 std::atomic_bool flag_debugging {};
 std::atomic_bool flag_update_frequencies {};
+std::atomic_bool flag_poll_sensors {};
 
 void setup() {
     Serial.begin(9600);
@@ -85,6 +86,8 @@ void setup() {
 
         //Attach interrupts
         attachInterrupt(digitalPinToInterrupt(PIN_IN_TOGGLE_DEBUG), isr_debug_toggle, RISING);
+
+        sensors.RefreshActiveSensors();
     }
     catch (std::exception& e)
     {
@@ -101,6 +104,7 @@ void loop()
     {
         //Read flags
         auto should_update_frequencies = flag_update_frequencies.load();
+        auto should_poll_sensors = flag_poll_sensors.load();
         const auto is_debugging = flag_debugging.load();
 
         //Update frequencies if flag set, and unset flag
@@ -109,6 +113,14 @@ void loop()
         if (should_update_frequencies)
         {
             update_frequency();
+        }
+
+        //Poll for changes in attached sensors if flag set, and unset flag
+        flag_poll_sensors.compare_exchange_strong(should_poll_sensors, false);
+
+        if (should_poll_sensors)
+        {
+            sensors.RefreshActiveSensors();
         }
 
         n = (n + 1) % std::numeric_limits<uint64_t>::max();
@@ -286,6 +298,15 @@ void print_debug_info()
 
 void isr_timer()
 {
+    static uint64_t n = 0;
+    n = (n + 1) % std::numeric_limits<uint64_t>::max();
+
+    if ((n % SENSOR_POLL_N) == 0)
+    {
+        //Set flag to check attached sensors on interval
+        flag_poll_sensors.store(true);
+    }
+
     //Set flag to update frequencies from sensor values on interval
     flag_update_frequencies.store(true);
 }
