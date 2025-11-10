@@ -62,6 +62,15 @@
     }                                                   \
                                                         \
 
+/**
+ * Clamp the given value to the given bounds
+ */
+#define CLAMP_TYPED(number_type)                                                                \
+    number_type Clamp(const number_type value, const number_type min, const number_type max)    \
+    {                                                                                           \
+        return std::max(min, std::min(max, value));                                             \
+    }                                                                                           \
+                                                                                                \
 
 COUNT_SET_BITS_TYPED(uint32_t)
 COUNT_SET_BITS_TYPED(uint16_t)
@@ -70,5 +79,10 @@ COUNT_SET_BITS_TYPED(uint8_t)
 GET_MAX_SET_BIT_TYPED(uint32_t)
 GET_MAX_SET_BIT_TYPED(uint16_t)
 GET_MAX_SET_BIT_TYPED(uint8_t)
+
+CLAMP_TYPED(uint32_t)
+CLAMP_TYPED(uint16_t)
+CLAMP_TYPED(uint8_t)
+CLAMP_TYPED(double)
 
 #endif //AUDIO_CONTROLLER_UTILS_H

@@ -14,31 +14,32 @@ static Rotary* rotary_encoder;
 
 //Range of output frequencies to map sensors to
 static const FrequencyRangeData frequency_ranges[SensorArrayDriver::MAX_SENSOR_COUNT] = {
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 3), GetMusicalNoteFrequency(MusicalNote::C, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C_Sharp, 3), GetMusicalNoteFrequency(MusicalNote::C_Sharp, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::D, 3), GetMusicalNoteFrequency(MusicalNote::D, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::D_Sharp, 3), GetMusicalNoteFrequency(MusicalNote::D_Sharp, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::E, 3), GetMusicalNoteFrequency(MusicalNote::E, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::F, 3), GetMusicalNoteFrequency(MusicalNote::F, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::F_Sharp, 3), GetMusicalNoteFrequency(MusicalNote::F_Sharp, 4)),
-    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::G, 3), GetMusicalNoteFrequency(MusicalNote::G, 4))
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::C, 4), GetMusicalNoteFrequency(MusicalNote::C, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::A, 4), GetMusicalNoteFrequency(MusicalNote::A, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::D, 4), GetMusicalNoteFrequency(MusicalNote::D, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::D_Sharp, 4), GetMusicalNoteFrequency(MusicalNote::D_Sharp, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::E, 4), GetMusicalNoteFrequency(MusicalNote::E, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::F, 4), GetMusicalNoteFrequency(MusicalNote::F, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::F_Sharp, 4), GetMusicalNoteFrequency(MusicalNote::F_Sharp, 4)),
+    FrequencyRangeData(GetMusicalNoteFrequency(MusicalNote::G, 4), GetMusicalNoteFrequency(MusicalNote::G, 4))
 };
 
 //The audio frequency to play based on the last-read input from sensors
 static std::atomic<double> frequencies[SensorArrayDriver::MAX_SENSOR_COUNT] {};
 
 static constexpr uint8_t audio_channels[] = { AUDIO_CHANNEL_0, AUDIO_CHANNEL_1 };
+// static constexpr uint8_t audio_channels[] = { AUDIO_CHANNEL_0 };
 
 //Value (out of INPUT_MAX_VALUE) representing to volume of the output audio
 static auto volume = new std::atomic_uint16_t(INPUT_MAX_VALUE);
 
-//Amount of time (in microseconds) to delay between iterations when looping over sensors
+//Amount of time (in milliseconds) to delay between iterations when looping over sensors
 static auto sensor_iterate_delay = new std::atomic_uint32_t(SENSOR_ITERATE_DELAY_DFT);
 
 //Flags
-std::atomic_bool flag_debugging {};
-std::atomic_bool flag_update_frequencies {};
-std::atomic_bool flag_poll_sensors {};
+static volatile std::atomic_bool flag_debugging {};
+static volatile std::atomic_bool flag_update_frequencies {};
+static volatile std::atomic_bool flag_poll_sensors {};
 
 void setup() {
     Serial.begin(9600);
@@ -46,10 +47,10 @@ void setup() {
 
     try
     {
-        //Set initial frequency values to bottom of respective ranges
+        //Set initial frequency values to 0
         for (int i = 0; i < SensorArrayDriver::MAX_SENSOR_COUNT; i++)
         {
-            frequencies[i].store(frequency_ranges[i].GetMin());
+            frequencies[i].store(0);
         }
 
         //Setup pins
@@ -116,11 +117,15 @@ void loop()
         }
 
         //Poll for changes in attached sensors if flag set, and unset flag
-        flag_poll_sensors.compare_exchange_strong(should_poll_sensors, false);
-
-        if (should_poll_sensors)
+        //If SENSOR_DETACHED_MAX_MV is 0, always consider sensor as attached
+        if (SensorArrayDriver::SENSOR_DETACHED_MAX_MV != 0)
         {
-            sensors.RefreshActiveSensors();
+            flag_poll_sensors.compare_exchange_strong(should_poll_sensors, false);
+
+            if (should_poll_sensors)
+            {
+                sensors.RefreshActiveSensors();
+            }
         }
 
         n = (n + 1) % std::numeric_limits<uint64_t>::max();
@@ -131,40 +136,11 @@ void loop()
             print_debug_info();
         }
 
-        const auto t = micros();
-
         //Get and update current volume
         const auto new_volume = analogRead(PIN_IN_AUDIO_VOLUME);
         volume->store(new_volume);
 
-        //Get ratio to max volume
-        const auto volume_scale = new_volume / (INPUT_MAX_VALUE * 1.);
-
-        //Calculate next value in wave based on current frequency values
-
-        //Split frequencies across channels
-        const auto d = sensors.EffectiveMaxSensorCount() / sizeof(audio_channels);
-        const auto r = sensors.EffectiveMaxSensorCount() % sizeof(audio_channels);
-
-        //Max length of chord is sensor count / # of channels, + 1 if there's a remainder
-        const auto chord_len = d + (r == 0? 0 : 1);
-        double chord[chord_len];
-
-        for (int i = 0, c = 0; c < sizeof(audio_channels); c++)
-        {
-            //Length of chord on this channel is sensor count / # of channels, + 1 if within remainder
-            const auto channel_chord_len = d + ((r == 0 || c > r)? 0 : 1);
-
-            //Set chord values
-            for (double &j : chord)
-            {
-                j = frequencies[i++].load();
-            }
-
-            //Calculate next value for wave and write to channel
-            const auto wave_value = wave(t, volume_scale, chord, channel_chord_len);
-            dacWrite(audio_channels[c], wave_value);
-        }
+        play_frequency();
     }
     catch (std::exception& e)
     {
@@ -186,10 +162,8 @@ uint8_t wave(const uint64_t t, const double scale, const double chord[], const u
     {
         const auto chord_value = chord[i];
 
-        //Ignore non-positive frequencies.
-        //0 indicates explicitly to ignore,
-        //negative is invalid
-        if (chord_value <= 0)
+        //Ignore frequencies below threshold
+        if (chord_value <= FREQ_MIN_HZ)
             continue;
 
         //Calculate sine wave for this frequency and time, scaled for volume
@@ -204,6 +178,11 @@ uint8_t wave(const uint64_t t, const double scale, const double chord[], const u
     {
         f = scale + f / count;
     }
+    //Return 0 if no frequencies were considered
+    else
+    {
+        return 0;
+    }
 
     //Map output value to a value between 0 and 255
     const auto v = static_cast<int32_t>(std::floor((DAC_MAX / 2.) * f));
@@ -215,8 +194,16 @@ void update_frequency()
     try
     {
         //Update frequencies based on sensor values
-        for (auto i = 0; i < sensors.EffectiveMaxSensorCount(); i++)
+        const auto effective_max = sensors.EffectiveMaxSensorCount();
+        for (auto i = 0; i < SensorArrayDriver::MAX_SENSOR_COUNT; i++)
         {
+            //Make sure everything past effective max is cleared
+            if (i > effective_max)
+            {
+                frequencies[i].store(0);
+                continue;
+            }
+
             const auto iterate_delay = sensor_iterate_delay->load();
 
             if (iterate_delay > 0)
@@ -241,17 +228,11 @@ double calculate_frequency(const int sensor, const FrequencyRangeData &frequency
         return 0;
 
     //Return 0 if invalid sensor range
-    if (SensorArrayDriver::SENSOR_MIN_DISTANCE > SensorArrayDriver::SENSOR_MAX_DISTANCE
-        || SensorArrayDriver::SENSOR_MAX_DISTANCE == 0)
+    if (SensorArrayDriver::SENSOR_MIN_DISTANCE >= SensorArrayDriver::SENSOR_MAX_DISTANCE)
         return 0;
 
-    const auto sensor_distance_cm_clamped = std::max(
-        SensorArrayDriver::SENSOR_MIN_DISTANCE,
-        std::min(
-            SensorArrayDriver::SENSOR_MAX_DISTANCE,
-            sensor_distance_cm
-        )
-    );
+    const auto sensor_distance_cm_clamped = Clamp(sensor_distance_cm,
+        SensorArrayDriver::SENSOR_MIN_DISTANCE, SensorArrayDriver::SENSOR_MAX_DISTANCE);
 
     //Get ratio into range that sensor value is at
     const auto ratio = (1. * (sensor_distance_cm_clamped - SensorArrayDriver::SENSOR_MIN_DISTANCE))
@@ -264,6 +245,41 @@ double calculate_frequency(const int sensor, const FrequencyRangeData &frequency
     const auto calculated_frequency = ((frequency_max - frequency_min) * ratio) + frequency_min;
 
     return calculated_frequency;
+}
+
+void play_frequency()
+{
+    const auto t = micros();
+
+    //Get ratio to max volume
+    const auto volume_scale = volume->load() / (INPUT_MAX_VALUE * 1.);
+
+    //Calculate next value in wave based on current frequency values
+
+    //Split frequencies across channels
+    const auto d = sensors.EffectiveMaxSensorCount() / sizeof(audio_channels);
+    const auto r = sensors.EffectiveMaxSensorCount() % sizeof(audio_channels);
+
+    //Max length of chord is sensor count / # of channels, + 1 if there's a remainder
+    const auto chord_len = d + (r == 0? 0 : 1);
+    double chord[chord_len];
+
+    for (int i = 0, c = 0; c < sizeof(audio_channels); c++)
+    {
+        //Length of chord on this channel is sensor count / # of channels, + 1 if within remainder
+        const auto channel_chord_len = d + ((r == 0 || c > r)? 0 : 1);
+
+        //Set chord values
+        for (double &j : chord)
+        {
+            j = frequencies[i++].load();
+        }
+
+        //Calculate next value for wave and write to channel
+        const auto wave_value = wave(t, volume_scale, chord, channel_chord_len);
+
+        dacWrite(audio_channels[c], wave_value);
+    }
 }
 
 void print_debug_info()
@@ -301,14 +317,21 @@ void isr_timer()
     static uint64_t n = 0;
     n = (n + 1) % std::numeric_limits<uint64_t>::max();
 
-    if ((n % SENSOR_POLL_N) == 0)
+    //Set flag to check attached sensors on interval
+    //If SENSOR_DETACHED_MAX_MV = 0, sensors
+    //always considered attached, so skip
+    if (SensorArrayDriver::SENSOR_DETACHED_MAX_MV != 0)
     {
-        //Set flag to check attached sensors on interval
-        flag_poll_sensors.store(true);
+        if ((n % SENSOR_POLL_N) == 0)
+        {
+            flag_poll_sensors.store(true);
+        }
     }
 
     //Set flag to update frequencies from sensor values on interval
     flag_update_frequencies.store(true);
+
+
 }
 
 void isr_debug_toggle()

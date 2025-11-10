@@ -10,22 +10,25 @@
 
 #include "common.h"
 
-#define SENSOR_TYPE__GP2Y0A02YK
-// #define SENSOR_TYPE__GP2Y0E02A
+// #define SENSOR_TYPE__GP2Y0A02YK
+#define SENSOR_TYPE__GP2Y0E02A
 
 class SensorArrayDriver
 {
 public:
     static constexpr uint8_t SELECT_PIN_COUNT = 3;
     static constexpr uint8_t MAX_SENSOR_COUNT = SELECT_PIN_COUNT == 0? 0 : (1 << SELECT_PIN_COUNT);
-    static constexpr uint32_t SELECT_DELAY_MICRO = 100;
+    static constexpr uint32_t SELECT_DELAY_MICRO = 150;
 
     static const uint16_t SENSOR_MIN_MV;
     static const double SENSOR_MIN_V;
     static const uint16_t SENSOR_MAX_MV;
     static const uint16_t SENSOR_MIN_DISTANCE;
     static const uint16_t SENSOR_MAX_DISTANCE;
-    static const uint16_t SENSOR_DETACHED_THRESHOLD_MV;
+
+    static const uint16_t SENSOR_DETACHED_MAX_MV;
+
+    static const int16_t SENSOR_OFFSET_MV;
 
     static uint16_t SensorValueToDistance__Specific(uint16_t value_mv);
 
@@ -65,11 +68,39 @@ public:
 
         //Read new sensor value
         const auto sensor_value = analogReadMilliVolts(data_pin);
+        uint32_t sensor_value_offset = sensor_value;
+
+        if (SENSOR_OFFSET_MV < 0)
+        {
+            //Subtract offset, clamping to 0 if less
+            if (sensor_value <= -SENSOR_OFFSET_MV)
+            {
+                sensor_value_offset = 0;
+            }
+            else
+            {
+                sensor_value_offset = sensor_value + SENSOR_OFFSET_MV;
+            }
+        }
+        else if (SENSOR_OFFSET_MV > 0)
+        {
+            //Add offset, clamping to max ushort
+            static const uint16_t MAX_SAFE_VALUE = std::numeric_limits<uint16_t>::max() - SENSOR_OFFSET_MV;
+
+            if (sensor_value >= MAX_SAFE_VALUE)
+            {
+                sensor_value_offset = std::numeric_limits<uint16_t>::max();
+            }
+            else
+            {
+                sensor_value_offset = sensor_value + SENSOR_OFFSET_MV;
+            }
+        }
 
         //Sensor value should never get anywhere near the max ushort
-        assert(sensor_value <= std::numeric_limits<uint16_t>::max());
+        assert(sensor_value_offset <= std::numeric_limits<uint16_t>::max());
 
-        return sensor_value;
+        return sensor_value_offset;
     }
 
     uint16_t ReadSensor(const uint8_t sensor, uint16_t& distance) const
@@ -93,7 +124,17 @@ public:
 
     void RefreshActiveSensors()
     {
-        //Reinitialize the number of valid select pins and active sensors
+        //If SENSOR_DETACHED_MAX_MV == 0, consider
+        //all sensors as always active
+        if (SENSOR_DETACHED_MAX_MV == 0)
+        {
+            active_sensors = (1 << MAX_SENSOR_COUNT) - 1;
+            effective_select_pin_count = SELECT_PIN_COUNT;
+            effective_max_sensor_count = MAX_SENSOR_COUNT;
+            return;
+        }
+
+        //Re-initialize the number of valid select pins and active sensors
         //so that we can properly read the values for all potentially connected sensors.
         //Clear any select pins
         active_sensors = (1 << MAX_SENSOR_COUNT) - 1;
@@ -119,13 +160,13 @@ public:
 
         //Check all potentially attached sensors.
         //If their value is below a set threshold,
-        //consider the position to be empty
+        //consider the position to be empty.
         uint16_t sensors = 0;
         for (auto i = 0; i < MAX_SENSOR_COUNT; i++)
         {
             const auto sensor_value = ReadSensor(i);
 
-            if (sensor_value > SENSOR_DETACHED_THRESHOLD_MV)
+            if (sensor_value > SENSOR_DETACHED_MAX_MV)
             {
                 sensors |= (1 << i);
             }
@@ -218,7 +259,9 @@ public:
     constexpr uint16_t SensorArrayDriver::SENSOR_MIN_DISTANCE = 15; //Closest distance in cm (peak mV), per datasheet
     constexpr uint16_t SensorArrayDriver::SENSOR_MAX_DISTANCE = 150; //Furthest distance in cm (bottom mV excluding very close), per datasheet
     constexpr double SensorArrayDriver::SENSOR_MIN_V = SENSOR_MIN_MV / 1000.;
-    constexpr uint16_t SensorArrayDriver::SENSOR_DETACHED_THRESHOLD_MV = 200;
+    constexpr uint16_t SensorArrayDriver::SENSOR_DETACHED_MAX_MV = 200;
+    constexpr int16_t SensorArrayDriver::SENSOR_OFFSET_MV = 142;
+
     /**
      * Distance corresponding to given GP2Y0A02YK sensor voltage
      */
@@ -260,35 +303,82 @@ public:
 
         //For any value that the sensor can actually produce (~3V max), distance
         //won't be more than 150cm. Clamp for safety, but not actually a concern.
-        return static_cast<uint16_t>(
-            std::max(
-                0.,
-                std::min(
-                    1. * std::numeric_limits<uint16_t>::max(),
-                    rounded
-                )
-            )
-        );
+        // return static_cast<uint16_t>(
+        //     std::max(
+        //         0.,
+        //         std::min(
+        //             1. * std::numeric_limits<uint16_t>::max(),
+        //             rounded
+        //         )
+        //     )
+        // );
+        return static_cast<uint16_t>(Clamp(rounded, 0., 1. * std::numeric_limits<uint16_t>::max()));
     }
 #else
 #ifdef SENSOR_TYPE__GP2Y0E02A
-    constexpr uint16_t SensorArrayDriver::SENSOR_MIN_MV = 0;
-    constexpr uint16_t SensorArrayDriver::SENSOR_MAX_MV = 1;
+    constexpr uint16_t SensorArrayDriver::SENSOR_MIN_MV = 300; //Min output can be as low as 300mV, per datasheet
+    constexpr uint16_t SensorArrayDriver::SENSOR_MAX_MV = 2300; //Min output can be as low as 2.3V, per datasheet
+    constexpr uint16_t SensorArrayDriver::SENSOR_MIN_DISTANCE = 4; //Closest distance in cm, per datasheet
+    constexpr uint16_t SensorArrayDriver::SENSOR_MAX_DISTANCE = 50; //Furthest distance in cm, per datasheet
     constexpr double SensorArrayDriver::SENSOR_MIN_V = SENSOR_MIN_MV / 1000.;
-    constexpr uint16_t SensorArrayDriver::SENSOR_DETACHED_THRESHOLD_MV = 200;
+    constexpr uint16_t SensorArrayDriver::SENSOR_DETACHED_MAX_MV = 250;
+    constexpr int16_t SensorArrayDriver::SENSOR_OFFSET_MV = -142;
 
     /**
-     * Distance corresponding to given GP2Y0E02A sensor voltage
+     * Distance corresponding to given GP2Y0E02A sensor voltage.
      */
     inline uint16_t SensorArrayDriver::SensorValueToDistance__Specific(const uint16_t value_mv)
     {
-        return 0;
+        //Set an absolute to account for error. Sensor array sometimes reports values
+        //between 500-700 mV even when no interaction. Does also end up ignoring
+        //distances in the mid-40cm's and up
+        static constexpr uint16_t ABS_MIN_DIST_MV = 700;
+        if (value_mv < ABS_MIN_DIST_MV)
+            return 0;
+
+        //Per datasheet, approximately linear function with points (2.2V, 4cm), (2.0V, 10cm), (0.55V, 50cm),
+        //with some error
+        constexpr double X_0 = 2.0, Y_0 = 10;
+        constexpr double X_1 = 0.55, Y_1 = 50;
+
+        constexpr double slope = (Y_1 - Y_0) / (X_1 - X_0);
+        constexpr double intercept = Y_0 - (slope * X_0);
+
+        //Clamp value to expected bounds, which have some error per the datasheet
+        // const double volts = (value_mv >= SENSOR_MAX_MV
+        //     ? SENSOR_MAX_MV
+        //     : (value_mv <= SENSOR_MIN_MV
+        //         ? SENSOR_MIN_MV
+        //         : value_mv)) / 1000.;
+        const double volts = Clamp(value_mv, SENSOR_MIN_MV, SENSOR_MAX_MV) / 1000.;
+
+        const auto distance_cm = (slope * volts) + intercept;
+
+        //Round value
+        static constexpr uint16_t ROUNDING_CM = 2;
+        const double rounded = ROUNDING_CM * std::round(distance_cm / ROUNDING_CM);
+
+        // Sensor will not output a distance anywhere near the max ushort unless something is
+        // horribly wrong. Clamp for safety, but not actually a concern.
+        // return static_cast<uint16_t>(
+        //     std::max(
+        //         0.,
+        //         std::min(
+        //             1. * std::numeric_limits<uint16_t>::max(),
+        //             rounded
+        //         )
+        //     )
+        // );
+        return static_cast<uint16_t>(Clamp(rounded, 0., 1. * std::numeric_limits<uint16_t>::max()));
     }
 #else
     constexpr uint16_t SENSOR_MIN_MV = 0;
     constexpr uint16_t SENSOR_MAX_MV = 1;
+    constexpr uint16_t SensorArrayDriver::SENSOR_MIN_DISTANCE = 0;
+    constexpr uint16_t SensorArrayDriver::SENSOR_MAX_DISTANCE = 0;
     constexpr double SENSOR_MIN_V = SENSOR_MIN_MV / 1000.;
-    constexpr uint16_t SensorArrayDriver::SENSOR_DETACHED_THRESHOLD_MV = 0;
+    constexpr uint16_t SensorArrayDriver::SENSOR_DETACHED_MAX_MV = 0;
+    constexpr int16_t SensorArrayDriver::SENSOR_OFFSET_MV = 0;
 
     /**
      * Distance corresponding to given sensor voltage, if no sensor

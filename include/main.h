@@ -26,11 +26,12 @@
 #define AUDIO_CHANNEL_0 DAC1                    //DAC channel for PIN_OUT_AUDIO_0
 #define AUDIO_CHANNEL_1 DAC2                    //DAC channel for PIN_OUT_AUDIO_1
 
-#define TIMER_INTERVAL 50000                    //Frequency at which update timer should trigger
+#define TIMER_INTERVAL 5000                     //Frequency at which update timer should trigger
 
-#define SENSOR_ITERATE_DELAY_DFT 0              //Dft delay when iterating over attached sensors
+#define SENSOR_ITERATE_DELAY_DFT 0              //Dft delay (in milliseconds) when iterating over attached sensors
 #define SENSOR_ITERATE_DELAY_STEP 10            //Step size when adjusting delay for sensor iterate
-#define SENSOR_POLL_N 50                        //Period to poll for changes in attached sensors in TIMER_INTERVAL timer
+#define SENSOR_POLL_N 250                       //Period to poll for changes in attached sensors in TIMER_INTERVAL timer
+#define FREQ_MIN_HZ 1                           //Don't play any frequencies below this
 
 /**
  * Get the next audio value to output
@@ -55,6 +56,10 @@ double calculate_frequency(int sensor, const FrequencyRangeData &frequency_range
  */
 void update_frequency();
 
+/**
+ * Output tone to dac channels
+ */
+void play_frequency();
 
 /**
  * Callback for timer interrupt
