@@ -1,9 +1,11 @@
 //
-// Created by bendstein on 9/29/2025.
+// Created by bendstein on 12/2/2025.
 //
 
 #ifndef AUDIO_CONTROLLER_NOTES_H
 #define AUDIO_CONTROLLER_NOTES_H
+
+#include <cmath>
 
 #define FREQUENCY_C0 16.35 //Frequency, in hz, for C in octave 0
 
@@ -36,6 +38,7 @@ enum MusicalNote
  * @todo Add another argument with an enum representing the tuning type,
  *  e.g. Tuning::Equal, Tuning::Just?
  */
+[[nodiscard]]
 constexpr double GetMusicalNoteFrequency(const MusicalNote note, const uint8_t octave)
 {
     return FREQUENCY_C0 * std::pow(2, (note + (octave * MAX)) / (MAX * 1.));

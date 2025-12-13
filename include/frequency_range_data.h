@@ -1,9 +1,14 @@
 //
-// Created by bendstein on 10/5/2025.
+// Created by bendstein on 12/2/2025.
 //
 
 #ifndef AUDIO_CONTROLLER_FREQUENCY_RANGE_DATA_H
 #define AUDIO_CONTROLLER_FREQUENCY_RANGE_DATA_H
+
+#include <stdatomic.h>
+#include <string>
+
+#include "app_common.h"
 
 /**
  * Data representing a range of frequencies that can be produced
