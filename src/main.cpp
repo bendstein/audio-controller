@@ -8,26 +8,46 @@
 #include "sdkconfig.h"
 #include "i2c.h"
 
-#define CFG_GP2Y0E02B_I2C_ADDR (1)
+// #define CFG_GP2Y0E02B_I2C_ADDR (0x10)
 
 extern "C" {
     [[noreturn]]
     void app_main(void);
 }
 
+/*
+ * TODO:
+ *  - Finish and test I2C address config for distance sensors
+ *  - Literally everything else
+ */
 [[noreturn]]
 void app_main()
 {
-    const auto i2c_bus = i2c_init_bus();
+    try
+    {
+        const auto i2c_bus = i2c_init_bus();
 
 #ifdef CFG_GP2Y0E02B_I2C_ADDR
+    //configure_gp2y0e02b never returns, so rest of program is never executed
+    //when configuring a sensor
     configure_gp2y0e02b(i2c_bus);
 #endif
 
-    while (true)
-    {
-        ESP_LOGI("main", "a");
+        // const auto sensor_0 = i2c_init_device(i2c_bus, 0x80);
+
+        while (true)
+        {
+            LOGI("main", std::format("i2c bus: {:#010X}",
+                reinterpret_cast<uintptr_t>(i2c_bus)
+            ));
+        }
     }
+    catch (const std::exception& e)
+    {
+        LOGE("app_main", std::format("An exception occurred: {}", e.what()));
+    }
+
+    while (true) {} //Make sure to never return
 }
 
 #ifdef CFG_GP2Y0E02B_I2C_ADDR
@@ -43,9 +63,10 @@ void configure_gp2y0e02b(const i2c_master_bus_handle_t bus)
 
         set_gp2y0e02b_i2c_addr(bus, CFG_GP2Y0E02B_I2C_ADDR);
     }
-    catch (...)
+    catch (const std::exception& e)
     {
-        ESP_LOGE("main", "Failed to program sensor address.");
+        LOGE("app_main", std::format("An exception occurred while configuring sensor address: {}",
+            e.what()));
     }
 
     while (true) {}

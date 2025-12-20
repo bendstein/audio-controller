@@ -15,10 +15,12 @@ void set_gp2y0e02b_i2c_addr(const i2c_master_bus_handle_t bus, const uint8_t add
     assert((addr_new & 0x0F) == 0);
     assert(bus != nullptr);
 
-    ESP_LOGI("i2c", "Programming sensor efuses to use address %d", addr_new);
+    LOGI("i2c", std::format("Programming sensor efuses to use address {:04X}.", addr_new));
 
     //Connect to device
     const auto handle = i2c_init_device(bus, GP2Y0E02B_I2C_ADDR_DFT);
+
+    return;
 
     vTaskDelay(1 / portTICK_PERIOD_MS); //Wait 1ms for Vcc
 

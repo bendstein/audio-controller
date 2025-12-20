@@ -15,7 +15,7 @@
 [[nodiscard]]
 i2c_master_bus_handle_t i2c_init_bus()
 {
-    ESP_LOGI("i2c", "Init bus");
+    LOGI("i2c", "Init bus");
 
     constexpr i2c_master_bus_config_t bus_cfg = {
         .i2c_port = I2C_BUS_PORT_0,
@@ -34,16 +34,16 @@ i2c_master_bus_handle_t i2c_init_bus()
     i2c_master_bus_handle_t handle;
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &handle));
 
-    ESP_LOGI("i2c", "Initialized I2C bus. Handle: %s",
-        reinterpret_cast<uintptr_t>(handle));
+    LOGI("i2c", std::format("Finished initializing I2C bus. Handle: 0x{:08X}",
+        reinterpret_cast<uintptr_t>(handle)));
 
     return handle;
 }
 
 [[nodiscard]]
-i2c_master_dev_handle_t i2c_init_device(i2c_master_bus_handle_t bus, uint8_t addr)
+i2c_master_dev_handle_t i2c_init_device(const i2c_master_bus_handle_t bus, uint8_t addr)
 {
-    ESP_LOGI("i2c", "Init I2C device %d", addr);
+    LOGI("i2c", std::format("Init I2C device {:04X}.", addr));
 
     const i2c_device_config_t device_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -59,9 +59,9 @@ i2c_master_dev_handle_t i2c_init_device(i2c_master_bus_handle_t bus, uint8_t add
 
     ESP_ERROR_CHECK(i2c_master_bus_add_device(bus, &device_cfg, &handle));
 
-    ESP_LOGI("i2c", "Finished initializing I2C device %d. Handle: %s",
-        reinterpret_cast<uintptr_t>(handle)
-    );
+    LOGI("i2c", std::format("Finished initializing I2C device {:04X}. Handle: 0x{:08X}",
+        addr,
+        reinterpret_cast<uintptr_t>(handle)));
 
     return handle;
 }
