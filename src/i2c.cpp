@@ -11,6 +11,7 @@
 #include <format>
 
 #include "app_common.h"
+#include "gp2y0e02b.h"
 
 [[nodiscard]]
 i2c_master_bus_handle_t i2c_init_bus()
@@ -41,9 +42,9 @@ i2c_master_bus_handle_t i2c_init_bus()
 }
 
 [[nodiscard]]
-i2c_master_dev_handle_t i2c_init_device(const i2c_master_bus_handle_t bus, uint8_t addr)
+i2c_device i2c_init_device(i2c_master_bus_handle_t bus, const uint8_t addr, const i2c_device_type type)
 {
-    LOGI("i2c", std::format("Init I2C device {:04X}.", addr));
+    LOGI("i2c", std::format("Init I2C device 0x{:02X}.", addr));
 
     const i2c_device_config_t device_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -59,9 +60,40 @@ i2c_master_dev_handle_t i2c_init_device(const i2c_master_bus_handle_t bus, uint8
 
     ESP_ERROR_CHECK(i2c_master_bus_add_device(bus, &device_cfg, &handle));
 
-    LOGI("i2c", std::format("Finished initializing I2C device {:04X}. Handle: 0x{:08X}",
+    LOGI("i2c", std::format("Finished initializing I2C device 0x{:02X}. Handle: 0x{:08X}",
         addr,
         reinterpret_cast<uintptr_t>(handle)));
 
-    return handle;
+    return {
+        .handle = handle,
+        .address = addr,
+        .type = type
+    };
+}
+
+[[nodiscard]]
+bool i2c_ping_device(i2c_device* device, const int timeout_ms)
+{
+    LOGI("i2c", "Ping I2C device " + device->to_string());
+
+    bool result;
+
+    switch (device->type)
+    {
+        case GP2Y0E02B:
+            result = gp2y0e02b::ping(device, timeout_ms);
+            break;
+        case NONE:
+        case UNKNOWN:
+        default:
+            result = false;
+            break;
+    }
+
+    if (result)
+        LOGI("i2c", "Pong " + device->to_string());
+    else
+        LOGW("i2c", "No pong from " + device->to_string());
+
+    return result;
 }

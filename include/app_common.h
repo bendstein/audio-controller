@@ -9,15 +9,21 @@
 #include <esp_log.h>
 #include <format>
 #include <string>
+#include <freertos/FreeRTOS.h>
 
 #define PIN_LED_BUILTIN gpio_num_t::GPIO_NUM_13 //Built-in LED
+#define portTICK_PERIOD_US ((TickType_t)1000 / portTICK_PERIOD_MS)
 
 #define LOW 0
 #define HIGH 1
 #define DAC_MAX 255
 #define FREQ_MIN_HZ 1
 
+//Change parameter into HIGH or LOW for digital write
 #define DIGITAL(boolean_value) boolean_value ? HIGH : LOW
+
+//Change parameter name directly to string
+#define NAMEOF(any) #any
 
 /**
  * Count the number of set bits in an integer value,
