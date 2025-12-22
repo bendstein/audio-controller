@@ -11,9 +11,8 @@
 
 enum i2c_device_type : uint8_t
 {
-    NONE = 0,
-    GP2Y0E02B = 1,
-    UNKNOWN = 0xFF
+    UNKNOWN = 0,
+    GP2Y0E02B = 1
 };
 
 static std::string i2c_device_type_name(const i2c_device_type type)
@@ -22,8 +21,6 @@ static std::string i2c_device_type_name(const i2c_device_type type)
     {
         case GP2Y0E02B:
             return NAMEOF(GP2Y0E02B);
-        case NONE:
-            return NAMEOF(NONE);
         case UNKNOWN:
         default:
             return NAMEOF(UNKNOWN);

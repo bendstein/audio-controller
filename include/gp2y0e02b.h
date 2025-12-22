@@ -10,7 +10,7 @@
 #define GP2Y0E02B_PIN_ENABLE_VPP  gpio_num_t::GPIO_NUM_14
 
 //Addr for read is top 7 bits, with LSB 1
-#define GP2Y0E02B_ADDR_AS_READ(addr) ((addr) & 0xFE) | 0x01
+#define GP2Y0E02B_ADDR_AS_READ(addr) (((addr) & 0xFE) | 0x01)
 
 //Addr for write is top 7 bits, with LSB 0
 #define GP2Y0E02B_ADDR_AS_WRITE(addr) ((addr) & 0xFE)
@@ -22,6 +22,8 @@ namespace gp2y0e02b
     [[nodiscard]]
     bool ping(const i2c_device* device, int timeout_ms);
 
+    [[nodiscard]]
+    std::optional<uint8_t> read_from_register(const i2c_device* device, uint8_t reg, int timeout_ms);
 }
 
 #endif //AUDIO_CONTROLLER_GP2Y0E02B_H

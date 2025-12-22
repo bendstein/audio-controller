@@ -4,7 +4,6 @@
 #include "app_common.h"
 #include "gp2y0e02b.h"
 
-#include <cassert>
 #include <driver/i2c.h>
 #include <driver/i2c_master.h>
 
@@ -103,13 +102,139 @@ void gp2y0e02b::set_i2c_addr(i2c_master_bus_handle_t bus, uint8_t addr_new)
 [[nodiscard]]
 bool gp2y0e02b::ping(const i2c_device* device, const int timeout_ms)
 {
-    const uint8_t ping_addr = GP2Y0E02B_ADDR_AS_WRITE(device->address);
-    
-    const auto status = i2c_master_transmit(
-        device->handle,
-        &ping_addr,
-        1,
+    constexpr uint8_t register_hold_bit = 0x03;
+    const auto hold_bit_data = read_from_register(
+        device,
+        register_hold_bit,
         timeout_ms);
 
-    return status == ESP_OK;
+    return hold_bit_data.has_value();
+
+    // constexpr uint8_t write_buffer[] = { 0x80 };
+    // uint8_t read_buffer[1] = {};
+    //
+    // const auto response_status = i2c_master_transmit_receive(
+    //     device->handle,
+    //     write_buffer, sizeof(write_buffer),
+    //     read_buffer, sizeof(read_buffer),
+    //     timeout_ms
+    // );
+
+    // constexpr uint8_t reg_addr_hold_bit = 0x03;
+    // uint8_t resp_hold_bit = 0x00;
+    //
+    // const auto response_status = i2c_master_transmit_receive(
+    //     device->handle,
+    //     &reg_addr_hold_bit, sizeof(reg_addr_hold_bit),
+    //     &resp_hold_bit, sizeof(resp_hold_bit),
+    //     timeout_ms
+    // );
+
+    // return response_status == ESP_OK;
+
+    // uint8_t ping_addr = GP2Y0E02B_ADDR_AS_WRITE(device->address);
+    // uint8_t reg_addr_hold_bit = 0x03;
+    //
+    // i2c_master_transmit_multi_buffer_info_t message[] = {
+    //     {
+    //         .write_buffer = &ping_addr,
+    //         .buffer_size = sizeof(ping_addr)
+    //     },
+    //     {
+    //         .write_buffer = &reg_addr_hold_bit,
+    //         .buffer_size = sizeof(reg_addr_hold_bit)
+    //     }
+    // };
+    //
+    // const auto write__select_reg_hold_bit = i2c_master_multi_buffer_transmit(
+    //     device->handle,
+    //     message,
+    //     sizeof(message) / sizeof(i2c_master_transmit_multi_buffer_info_t),
+    //     timeout_ms
+    // );
+    //
+    // if (write__select_reg_hold_bit != ESP_OK)
+    //     return false;
+    //
+    // const auto status = i2c_master_transmit(
+    //     device->handle,
+    //     &ping_addr,
+    //     1,
+    //     timeout_ms);
+    //
+    // return status == ESP_OK;
+}
+
+[[nodiscard]]
+std::optional<uint8_t> gp2y0e02b::read_from_register(const i2c_device* device, uint8_t reg, const int timeout_ms)
+{
+    if (device->handle == nullptr) return std::nullopt;
+    if (device->type != GP2Y0E02B) return std::nullopt;
+
+    uint8_t addr_write = GP2Y0E02B_ADDR_AS_WRITE(device->address);
+
+    i2c_operation_job_t ops_0[] = {
+        { .command = I2C_MASTER_CMD_START },    //I2C Start Cycle 1
+        {                                       //Select address for write
+            .command = I2C_MASTER_CMD_WRITE,
+            .write = {
+                .ack_check = true,
+                .data = &addr_write,
+                .total_bytes = 1
+            }
+        },
+        {                                       //Select register
+            .command = I2C_MASTER_CMD_WRITE,
+                .write = {
+                .ack_check = true,
+                .data = &reg,
+                .total_bytes = 1
+            }
+        },
+        { .command = I2C_MASTER_CMD_STOP },    //I2C Stop Cycle 1
+    };
+
+    uint8_t addr_read = GP2Y0E02B_ADDR_AS_READ(device->address);
+    uint8_t buffer_read = 0;
+
+    i2c_operation_job_t ops_1[] = {
+        { .command = I2C_MASTER_CMD_START },    //I2C Start Cycle 2
+        {                                       //Select address for read
+            .command = I2C_MASTER_CMD_WRITE,
+            .write = {
+                .ack_check = true,
+                .data = &addr_read,
+                .total_bytes = 1
+            }
+        },
+        {                                       //Read data
+            .command = I2C_MASTER_CMD_READ,
+            .read = {
+                .ack_value = I2C_NACK_VAL,
+                .data = &buffer_read,
+                .total_bytes = 1
+            }
+        },
+        { .command = I2C_MASTER_CMD_STOP }      //I2C Stop Cycle 2
+    };
+
+    const auto response_select_register = i2c_master_execute_defined_operations(
+        device->handle,
+        ops_0, sizeof(ops_0) / sizeof(i2c_operation_job_t),
+        timeout_ms
+    );
+
+    if (response_select_register != ESP_OK)
+        return std::nullopt;
+
+    const auto response_read_register = i2c_master_execute_defined_operations(
+        device->handle,
+        ops_1, sizeof(ops_1) / sizeof(i2c_operation_job_t),
+        timeout_ms
+    );
+
+    if (response_read_register != ESP_OK)
+        return std::nullopt;
+
+    return buffer_read;
 }

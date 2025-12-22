@@ -18,6 +18,13 @@ i2c_master_bus_handle_t i2c_init_bus()
 {
     LOGI("i2c", "Init bus");
 
+    gpio_reset_pin(I2C_PIN_SDA_0);
+    gpio_reset_pin(I2C_PIN_SCL);
+    gpio_set_direction(I2C_PIN_SDA_0, GPIO_MODE_OUTPUT);
+    gpio_set_direction(I2C_PIN_SCL, GPIO_MODE_OUTPUT);
+    // gpio_set_pull_mode(I2C_PIN_SDA_0, GPIO_PULLUP_ONLY);
+    // gpio_set_pull_mode(I2C_PIN_SCL, GPIO_PULLUP_ONLY);
+
     constexpr i2c_master_bus_config_t bus_cfg = {
         .i2c_port = I2C_BUS_PORT_0,
         .sda_io_num = I2C_PIN_SDA_0,
@@ -48,7 +55,7 @@ i2c_device i2c_init_device(i2c_master_bus_handle_t bus, const uint8_t addr, cons
 
     const i2c_device_config_t device_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = addr,
+        .device_address = I2C_DEVICE_ADDRESS_NOT_USED,
         .scl_speed_hz = I2C_DEVICE_SCL_SPEED_HZ,
         .scl_wait_us = I2C_DEVICE_SCL_WAIT_US,
         .flags = {
@@ -83,7 +90,6 @@ bool i2c_ping_device(i2c_device* device, const int timeout_ms)
         case GP2Y0E02B:
             result = gp2y0e02b::ping(device, timeout_ms);
             break;
-        case NONE:
         case UNKNOWN:
         default:
             result = false;

@@ -42,13 +42,10 @@ void app_main()
             0x80,
             GP2Y0E02B);
 
-        auto success = i2c_ping_device(&sensor_0, -1);
-
         while (true)
         {
-            // LOGI("main", std::format("i2c bus: 0x{:08X}",
-            //     reinterpret_cast<uintptr_t>(i2c_bus)
-            // ));
+            auto success = i2c_ping_device(&sensor_0, 5000);
+            vTaskDelay(portMAX_DELAY);
         }
     }
     catch (const std::exception& e)
@@ -56,7 +53,10 @@ void app_main()
         LOGE("app_main", std::format("An exception occurred: {}", e.what()));
     }
 
-    while (true) {} //Make sure to never return
+    while (true)
+    {
+        vTaskDelay(portMAX_DELAY);
+    } //Make sure to never return
 }
 
 #ifdef CFG_GP2Y0E02B_I2C_ADDR
@@ -78,6 +78,9 @@ void configure_gp2y0e02b(const i2c_master_bus_handle_t bus)
             e.what()));
     }
 
-    while (true) {}
+    while (true)
+    {
+        vTaskDelay(portMAX_DELAY);
+    } //Make sure to never return
 }
 #endif
