@@ -7,7 +7,7 @@
 #include "i2c.h"
 
 #define GP2Y0E02B_I2C_ADDR_DFT 0x80
-#define GP2Y0E02B_PIN_ENABLE_VPP  gpio_num_t::GPIO_NUM_14
+#define GP2Y0E02B_PIN_ENABLE_VPP gpio_num_t::GPIO_NUM_14
 
 //Addr for read is top 7 bits, with LSB 1
 #define GP2Y0E02B_ADDR_AS_READ(addr) (((addr) & 0xFE) | 0x01)
