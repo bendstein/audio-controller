@@ -25,6 +25,10 @@ namespace gp2y0e02b
 
     [[nodiscard]]
     std::optional<register_map_entry> read_from_register(const i2c_device* device, register_map_tag reg, int timeout_ms);
+
+    bool burst_read_from_register(const i2c_device* device, const register_map_tag registers[], register_map_entry results[], size_t read_len, int timeout_ms);
+
+    
 }
 
 #endif //AUDIO_CONTROLLER_GP2Y0E02B_H

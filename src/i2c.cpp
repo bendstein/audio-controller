@@ -16,7 +16,7 @@
 [[nodiscard]]
 i2c_master_bus_handle_t i2c_init_bus()
 {
-    LOGI("i2c", "Init bus");
+    logi("i2c", "Init bus");
 
     gpio_reset_pin(I2C_PIN_SDA_0);
     gpio_reset_pin(I2C_PIN_SCL);
@@ -42,7 +42,7 @@ i2c_master_bus_handle_t i2c_init_bus()
     i2c_master_bus_handle_t handle;
     ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &handle));
 
-    LOGI("i2c", std::format("Finished initializing I2C bus. Handle: 0x{:08X}",
+    logi("i2c", std::format("Finished initializing I2C bus. Handle: 0x{:08X}",
         reinterpret_cast<uintptr_t>(handle)));
 
     return handle;
@@ -51,9 +51,9 @@ i2c_master_bus_handle_t i2c_init_bus()
 [[nodiscard]]
 i2c_device i2c_init_device(i2c_master_bus_handle_t bus, const uint8_t addr, const i2c_device_type type)
 {
-    LOGI("i2c", std::format("Init I2C device 0x{:02X}.", addr));
+    logi("i2c", std::format("Init I2C device 0x{:02X}.", addr));
 
-    const i2c_device_config_t device_cfg = {
+    constexpr i2c_device_config_t device_cfg = {
         .dev_addr_length = I2C_ADDR_BIT_LEN_7,
         .device_address = I2C_DEVICE_ADDRESS_NOT_USED,
         .scl_speed_hz = I2C_DEVICE_SCL_SPEED_HZ,
@@ -67,7 +67,7 @@ i2c_device i2c_init_device(i2c_master_bus_handle_t bus, const uint8_t addr, cons
 
     ESP_ERROR_CHECK(i2c_master_bus_add_device(bus, &device_cfg, &handle));
 
-    LOGI("i2c", std::format("Finished initializing I2C device 0x{:02X}. Handle: 0x{:08X}",
+    logi("i2c", std::format("Finished initializing I2C device 0x{:02X}. Handle: 0x{:08X}",
         addr,
         reinterpret_cast<uintptr_t>(handle)));
 
@@ -81,25 +81,25 @@ i2c_device i2c_init_device(i2c_master_bus_handle_t bus, const uint8_t addr, cons
 [[nodiscard]]
 bool i2c_ping_device(i2c_device* device, const int timeout_ms)
 {
-    LOGI("i2c", "Ping I2C device " + device->to_string());
+    logi("i2c", "Ping I2C device " + device->to_string());
 
     bool result;
 
     switch (device->type)
     {
-        case GP2Y0E02B:
+        case i2c_device_type::GP2Y0E02B:
             result = gp2y0e02b::ping(device, timeout_ms);
             break;
-        case UNKNOWN:
+        case i2c_device_type::UNKNOWN:
         default:
             result = false;
             break;
     }
 
     if (result)
-        LOGI("i2c", "Pong " + device->to_string());
+        logi("i2c", "Pong " + device->to_string());
     else
-        LOGW("i2c", "No pong from " + device->to_string());
+        logw("i2c", "No pong from " + device->to_string());
 
     return result;
 }

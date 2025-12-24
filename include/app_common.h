@@ -110,10 +110,32 @@ inline void log_message(const std::string& tag, const std::string& message, cons
     );
 }
 
-#define LOGV(tag, message) do { log_message(tag, message, ESP_LOG_VERBOSE); } while(0)
-#define LOGD(tag, message) do { log_message(tag, message, ESP_LOG_DEBUG); } while(0)
-#define LOGW(tag, message) do { log_message(tag, message, ESP_LOG_WARN); } while(0)
-#define LOGE(tag, message) do { log_message(tag, message, ESP_LOG_ERROR); } while(0)
-#define LOGI(tag, message) do { log_message(tag, message, ESP_LOG_INFO); } while(0)
-#define LOG(tag, message) LOGI(tag, message)
+inline void logv(const std::string& tag, const std::string& message)
+{
+    log_message(tag, message, ESP_LOG_VERBOSE);
+}
+inline void logi(const std::string& tag, const std::string& message)
+{
+    log_message(tag, message, ESP_LOG_INFO);
+}
+
+inline void logd(const std::string& tag, const std::string& message)
+{
+    log_message(tag, message, ESP_LOG_DEBUG);
+}
+
+inline void logw(const std::string& tag, const std::string& message)
+{
+    log_message(tag, message, ESP_LOG_WARN);
+}
+
+inline void loge(const std::string& tag, const std::string& message)
+{
+    log_message(tag, message, ESP_LOG_ERROR);
+}
+
+inline void log(const std::string& tag, const std::string& message)
+{
+    logi(tag, message);
+}
 #endif //AUDIO_CONTROLLER_COMMON_H

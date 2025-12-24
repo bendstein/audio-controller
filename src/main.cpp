@@ -4,6 +4,7 @@
 
 #include "driver/gpio.h"
 #include "esp_log.h"
+#include "gp2y0e02b.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -37,20 +38,39 @@ void app_main()
     configure_gp2y0e02b(i2c_bus);
 #endif
 
-        auto sensor_0 = i2c_init_device(
+        const auto sensor_0 = i2c_init_device(
             i2c_bus,
             0x80,
-            GP2Y0E02B);
+            i2c_device_type::GP2Y0E02B);
 
         while (true)
         {
-            auto success = i2c_ping_device(&sensor_0, 5000);
-            vTaskDelay(portMAX_DELAY);
+            const auto maybe_value = gp2y0e02b::read_from_register(
+                &sensor_0,
+                gp2y0e02b::register_map_tag::DISTANCE_3_THRU_0,
+                5000
+            ).and_then([](const gp2y0e02b::register_map_entry entry)
+            {
+                return std::optional(entry.data.distance_3_thru_0);
+            });
+
+            if (maybe_value.has_value())
+            {
+                logi("app_main", std::format("Active/Standby: {}",
+                    static_cast<uint8_t>(maybe_value->distance_part)));
+            }
+            else
+            {
+                logw("app_main", "Active/Standby register query returned no result.");
+            }
+
+            // auto success = i2c_ping_device(&sensor_0, 5000);
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
         }
     }
     catch (const std::exception& e)
     {
-        LOGE("app_main", std::format("An exception occurred: {}", e.what()));
+        loge("app_main", std::format("An exception occurred: {}", e.what()));
     }
 
     while (true)
@@ -74,7 +94,7 @@ void configure_gp2y0e02b(const i2c_master_bus_handle_t bus)
     }
     catch (const std::exception& e)
     {
-        LOGE("app_main", std::format("An exception occurred while configuring sensor address: {}",
+        logE("app_main", std::format("An exception occurred while configuring sensor address: {}",
             e.what()));
     }
 

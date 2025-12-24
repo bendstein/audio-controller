@@ -9,7 +9,7 @@
 
 #include "app_common.h"
 
-enum i2c_device_type : uint8_t
+enum struct i2c_device_type : uint8_t
 {
     UNKNOWN = 0,
     GP2Y0E02B = 1
@@ -19,11 +19,11 @@ static std::string i2c_device_type_name(const i2c_device_type type)
 {
     switch (type)
     {
-        case GP2Y0E02B:
-            return NAMEOF(GP2Y0E02B);
-        case UNKNOWN:
+        case i2c_device_type::GP2Y0E02B:
+            return NAMEOF(i2c_device_type::GP2Y0E02B);
+        case i2c_device_type::UNKNOWN:
         default:
-            return NAMEOF(UNKNOWN);
+            return NAMEOF(i2c_device_type::UNKNOWN);
     }
 }
 

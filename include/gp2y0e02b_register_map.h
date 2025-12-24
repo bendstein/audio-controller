@@ -4,11 +4,10 @@
 
 #ifndef AUDIO_CONTROLLER_GP2Y0E02B_REGISTER_MAP_H
 #define AUDIO_CONTROLLER_GP2Y0E02B_REGISTER_MAP_H
-#include <cstdint>
 
 namespace gp2y0e02b
 {
-    enum register_map_tag : uint8_t
+    enum struct register_map_tag : uint8_t
     {
         UNKNOWN,
         HOLD_BIT = 0x03,
@@ -47,7 +46,7 @@ namespace gp2y0e02b
         PEAK_COORDINATE = 0xFA
     };
 
-    enum maximum_emitting_pulse_width : uint8_t
+    enum struct maximum_emitting_pulse_width : uint8_t
     {
         us_40 = 0x03,
         us_80 = 0x04,
@@ -56,53 +55,53 @@ namespace gp2y0e02b
         us_320 = 0x07,
     };
 
-    enum cover_compensation_enable_bit : uint8_t
+    enum struct cover_compensation_enable_bit : uint8_t
     {
-        cc_enable = 0x02,
-        cc_disable = 0x03
+        enable = 0x02,
+        disable = 0x03
     };
 
-    enum hold_bit : uint8_t
+    enum struct hold_bit : uint8_t
     {
-        device_hold = 0x00,
-        device_enable = 0x01,
+        hold = 0x00,
+        enable = 0x01,
     };
 
-    enum enable_bit : uint8_t
+    enum struct enable_bit : uint8_t
     {
         enable = 0x00,
         disable = 0x01,
     };
 
-    enum efuse_program_enable_bit : uint8_t
+    enum struct efuse_program_enable_bit : uint8_t
     {
-        ef_disable = 0x00,
-        ef_enable = 0x01,
+        disable = 0x00,
+        enable = 0x01,
     };
 
-    enum shift_bit : uint8_t
+    enum struct shift_bit : uint8_t
     {
-        maximum_display_128_cm = 0x01,
-        maximum_display_64_cm = 0x02,
+        cm_128 = 0x01,
+        cm_64 = 0x02,
     };
 
-    enum median_filter : uint8_t
+    enum struct median_filter : uint8_t
     {
-        median_calculation_7 = 0x00,
-        median_calculation_5 = 0x10,
-        median_calculation_9 = 0x20,
-        median_calculation_1 = 0x30,
+        med_7 = 0x00,
+        med_5 = 0x01,
+        med_9 = 0x02,
+        med_1 = 0x03,
     };
 
-    enum read_out_image_sensor_data : uint8_t
+    enum struct read_out_image_sensor_data : uint8_t
     {
-        level_disable = 0x00,
-        level_low = 0x01,
-        level_mid = 0x11,
-        level_high = 0x12,
+        lvl_disable = 0x00,
+        lvl_low = 0x01,
+        lvl_mid = 0x11,
+        lvl_high = 0x12,
     };
 
-    enum signal_accumulation_number : uint8_t
+    enum struct signal_accumulation_number : uint8_t
     {
         times_1 = 0x00,
         times_5 = 0x01,
@@ -110,13 +109,13 @@ namespace gp2y0e02b
         times_10 = 0x03,
     };
 
-    enum efuse_read_out : uint8_t
+    enum struct efuse_read_out : uint8_t
     {
         no_readout = 0x00,
         load_to_register = 0x01,
     };
 
-    enum register_bank : uint8_t
+    enum struct register_bank : uint8_t
     {
         bank_a = 0x01,
         bank_b = 0x02,
@@ -125,25 +124,25 @@ namespace gp2y0e02b
         bank_e = 0x05
     };
 
-    enum active_stand_by_state : uint8_t
+    enum struct active_stand_by_state : uint8_t
     {
-        state_active = 0x00,
-        state_standby = 0x01,
+        active = 0x00,
+        standby = 0x01,
     };
 
-    enum clock_select : uint8_t
+    enum struct clock_select : uint8_t
     {
-        clock_auto = 0x7F,
-        clock_manual = 0xFF
+        clk_auto = 0x7F,
+        clk_manual = 0xFF
     };
 
-    enum software_reset : uint8_t
+    enum struct software_reset : uint8_t
     {
         unset = 0x00,
-        reset_software = 0x06
+        reset = 0x03
     };
 
-    enum bank_select : uint8_t
+    enum struct bank_select : uint8_t
     {
         select_bank_a = 0x00,
         select_bank_e = 0x03,
@@ -151,7 +150,7 @@ namespace gp2y0e02b
 
     struct register_map_entry_hold_bit
     {
-        hold_bit hold_bit: 1;
+        hold_bit hold: 1;
     };
 
     struct register_map_entry_maximum_emitting_pulse_width
@@ -181,13 +180,13 @@ namespace gp2y0e02b
 
     struct register_map_entry_shift_bit
     {
-        shift_bit shift_bit: 3;
+        shift_bit shift: 3;
     };
 
     struct register_map_entry_median_filter
     {
         uint8_t _dummy: 5;
-        median_filter median_filter: 2;
+        median_filter filter: 3;
     };
 
     struct register_map_entry_sram_access
@@ -255,7 +254,7 @@ namespace gp2y0e02b
     struct register_map_entry_efuse_target_address
     {
         uint8_t address: 6;
-        efuse_read_out efuse_read_out: 1;
+        efuse_read_out read_out: 1;
         enable_bit enable: 1;
     };
 
