@@ -4,6 +4,7 @@
 
 #ifndef AUDIO_CONTROLLER_GP2Y0E02B_H
 #define AUDIO_CONTROLLER_GP2Y0E02B_H
+#include "gp2y0e02b_register_map.h"
 #include "i2c.h"
 
 #define GP2Y0E02B_I2C_ADDR_DFT 0x80
@@ -23,7 +24,7 @@ namespace gp2y0e02b
     bool ping(const i2c_device* device, int timeout_ms);
 
     [[nodiscard]]
-    std::optional<uint8_t> read_from_register(const i2c_device* device, uint8_t reg, int timeout_ms);
+    std::optional<register_map_entry> read_from_register(const i2c_device* device, register_map_tag reg, int timeout_ms);
 }
 
 #endif //AUDIO_CONTROLLER_GP2Y0E02B_H

@@ -166,11 +166,12 @@ bool gp2y0e02b::ping(const i2c_device* device, const int timeout_ms)
 }
 
 [[nodiscard]]
-std::optional<uint8_t> gp2y0e02b::read_from_register(const i2c_device* device, uint8_t reg, const int timeout_ms)
+std::optional<gp2y0e02b::register_map_entry> gp2y0e02b::read_from_register(const i2c_device* device, register_map_tag reg, const int timeout_ms)
 {
     if (device->handle == nullptr) return std::nullopt;
     if (device->type != GP2Y0E02B) return std::nullopt;
 
+    uint8_t target_register = reg;
     uint8_t addr_write = GP2Y0E02B_ADDR_AS_WRITE(device->address);
 
     i2c_operation_job_t ops_0[] = {
@@ -187,7 +188,7 @@ std::optional<uint8_t> gp2y0e02b::read_from_register(const i2c_device* device, u
             .command = I2C_MASTER_CMD_WRITE,
                 .write = {
                 .ack_check = true,
-                .data = &reg,
+                .data = &target_register,
                 .total_bytes = 1
             }
         },
@@ -236,5 +237,11 @@ std::optional<uint8_t> gp2y0e02b::read_from_register(const i2c_device* device, u
     if (response_read_register != ESP_OK)
         return std::nullopt;
 
-    return buffer_read;
+    return register_map_entry
+    {
+        .tag = reg,
+        .data = {
+            .raw_value = buffer_read
+        }
+    };
 }
