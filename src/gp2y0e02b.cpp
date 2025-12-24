@@ -8,6 +8,12 @@
 #include <driver/i2c.h>
 #include <driver/i2c_master.h>
 
+/**
+ *
+ * @param bus
+ * @param addr_new
+ * @warning This is a destructive action, as it permanently burns e-fuses.
+ */
 void gp2y0e02b::set_i2c_addr(i2c_master_bus_handle_t bus, uint8_t addr_new)
 {
     //Per docs, only top 4 bits are available for addressing.
@@ -100,25 +106,109 @@ void gp2y0e02b::set_i2c_addr(i2c_master_bus_handle_t bus, uint8_t addr_new)
     //
 }
 
-[[nodiscard]]
-bool gp2y0e02b::ping(const i2c_device* device, const int timeout_ms)
-{
-    const auto hold_bit_data = read_from_register(
-        device,
-        register_map_tag::HOLD_BIT,
-        timeout_ms);
+bool gp2y0e02b::distance_sensor::ping() const { return read_from_register(register_map_tag::ACTIVE_STAND_BY_STATE_CONTROL).has_value(); }
 
-    return hold_bit_data.has_value();
+bool gp2y0e02b::distance_sensor::update_distance_shift(shift_bit* distance_shift_out, shift_bit* prev_distance_shift_out)
+{
+    if (prev_distance_shift_out != nullptr) //Output prev value
+        *prev_distance_shift_out = get_distance_shift();
+
+    //Read shift bit
+    const auto maybe_shift_bit_entry = read_from_register(register_map_tag::SHIFT_BIT);
+
+    if (!maybe_shift_bit_entry.has_value())
+        return false;
+
+    const auto shift_bit = maybe_shift_bit_entry.value().data.shift_bit.shift;
+    state.distance_shift = shift_bit; //Update cached value
+
+    if (distance_shift_out != nullptr) //Output new value
+        *distance_shift_out = shift_bit;
+
+    return true;
 }
 
-[[nodiscard]]
-std::optional<gp2y0e02b::register_map_entry> gp2y0e02b::read_from_register(const i2c_device* device, register_map_tag reg, const int timeout_ms)
+bool gp2y0e02b::distance_sensor::update_distance(uint8_t* distance_out, uint8_t* prev_distance_out)
 {
-    assert(device->handle != nullptr);
-    assert(device->type == i2c_device_type::GP2Y0E02B);
+    //TODO: Signal accumulation, Median filter both have an effect on the delay between setting the
+    //register and reading it.
 
+    if (prev_distance_out != nullptr) //Output prev value
+        *prev_distance_out = get_distance();
+
+    //Read distance parts
+    register_map_entry register_entries[2];
+
+    constexpr register_map_tag registers_to_read[] = {
+        register_map_tag::DISTANCE_11_THRU_4,
+        register_map_tag::DISTANCE_3_THRU_0,
+    };
+
+    if (!burst_read_from_register(registers_to_read, register_entries, sizeof(registers_to_read)))
+        return false;
+
+    //Combine values, as given in datasheet (16 * Distance[11:4] + Distance[3:0]) / 16 / 2^ShiftBit
+    const auto distance_0 = register_entries[0].data.distance_11_thru_4.distance_part;
+    const auto distance_1 = register_entries[1].data.distance_3_thru_0.distance_part;
+    const auto shift_bit = get_distance_shift();
+
+    /*
+     * This is super overkill, but to justify the return type being an unsigned byte:
+     *
+     * Proof that (16 * Distance[11:4] + Distance[3:0]) / 16 / 2^ShiftBit will always fit in 8 bits:
+     * Let:
+     *   - distance_0 := *Distance[11:4]
+     *   - distance_1 := *Distance[3:0]
+     *   - shift_bit  := *ShiftBit
+     * Given:
+     *   - distance_0 bitfield uses all 8 bits (i.e. distance_0 is [0000_0000b, 1111_1111b])
+     *   - distance_1 bitfield uses only 4 bits (i.e. distance_1 is [0000b, 1111b])
+     *   - shift_bit bitfield uses only 3 bits (i.e. shift_bit is [0, 8])
+     *     - per datasheet should only ever be 1 or 2
+     * Then:
+     *   - 16 * distance_0 = distance_0 << 4
+     *       = [0000_0000b, 1111_1111b] << 4
+     *       = [0000_0000_0000b, 1111_1111_0000b]
+     *   - 16 * distance_0 + distance_1
+     *       = [0000_0000_0000b, 1111_1111_0000b] + distance_1
+     *       = [0000_0000_0000b, 1111_1111_0000b] + [0000b, 1111b]
+     *       = [0000_0000_0000b, 1111_1111_1111b]
+     *   - (16 * distance_0 + distance_1) / 16
+     *       = [0000_0000_0000b, 1111_1111_1111b] / 16
+     *       = [0000_0000_0000b, 1111_1111_1111b] >> 4
+     *       = [0000_0000b, 1111_1111b]
+     *   - (16 * distance_0 + distance_1) / 16 / 2^shift_bit
+     *       = [0000_0000b, 1111_1111b] / 2^shift_bit
+     *       = [0000_0000b, 1111_1111b] / 1 << shift_bit
+     *       = [0000_0000b, 1111_1111b] >> shift_bit
+     *       = [0000_0000b, 1111_1111b] >> [0, 8]
+     *       = [0000_0000b, 1111_1111b]
+     *   - Technically, then, can be anywhere from [0000_0000b, 1111_1111b],
+     *     but since shift_bit should only be 1 or 2:
+     * Therefore, range of values is:
+     *   - [0000_0000b, 0111_1111b] if shift bit = 1
+     *   - [0000_0000b, 0011_1111b] if shift bit = 2
+     * Both of which can be represented using a uint8_t
+     */
+    const auto distance = static_cast<uint8_t>((((distance_0 << 4) + distance_1) >> 4) >> static_cast<uint8_t>(shift_bit));
+    state.distance = distance; //Update cached value
+
+    if (distance_out != nullptr) //Output new value
+        *distance_out = distance;
+
+    return true;
+}
+
+[[nodiscard]] uint32_t gp2y0e02b::distance_sensor::get_read_delay(const register_map_tag reg) const
+{
+    //TODO Delay may be longer or shorter depending on tag and state
+    return READ_DELAY_DFT_MS;
+}
+
+std::optional<gp2y0e02b::register_map_entry> gp2y0e02b::distance_sensor::read_from_register(register_map_tag reg) const
+{
     uint8_t target_register = static_cast<uint8_t>(reg);
-    uint8_t addr_write = GP2Y0E02B_ADDR_AS_WRITE(device->address);
+    uint8_t addr_write = get_write_addr();
 
     i2c_operation_job_t ops_0[] = {
         { .command = I2C_MASTER_CMD_START },    //I2C Start Cycle 1
@@ -141,7 +231,7 @@ std::optional<gp2y0e02b::register_map_entry> gp2y0e02b::read_from_register(const
         { .command = I2C_MASTER_CMD_STOP },    //I2C Stop Cycle 1
     };
 
-    uint8_t addr_read = GP2Y0E02B_ADDR_AS_READ(device->address);
+    uint8_t addr_read = get_read_addr();
     uint8_t buffer_read = 0;
 
     i2c_operation_job_t ops_1[] = {
@@ -166,7 +256,7 @@ std::optional<gp2y0e02b::register_map_entry> gp2y0e02b::read_from_register(const
     };
 
     const auto response_select_register = i2c_master_execute_defined_operations(
-        device->handle,
+        handle->handle,
         ops_0, sizeof(ops_0) / sizeof(i2c_operation_job_t),
         timeout_ms
     );
@@ -175,7 +265,7 @@ std::optional<gp2y0e02b::register_map_entry> gp2y0e02b::read_from_register(const
         return std::nullopt;
 
     const auto response_read_register = i2c_master_execute_defined_operations(
-        device->handle,
+        handle->handle,
         ops_1, sizeof(ops_1) / sizeof(i2c_operation_job_t),
         timeout_ms
     );
@@ -192,20 +282,14 @@ std::optional<gp2y0e02b::register_map_entry> gp2y0e02b::read_from_register(const
     };
 }
 
-bool gp2y0e02b::burst_read_from_register(const i2c_device* device,
-    const register_map_tag registers[],
-    register_map_entry results[],
-    const size_t read_len,
-    const int timeout_ms)
+bool gp2y0e02b::distance_sensor::burst_read_from_register(const register_map_tag registers[], register_map_entry results[], const size_t read_len) const
 {
-    assert(device->handle != nullptr);
-    assert(device->type == i2c_device_type::GP2Y0E02B);
     assert(read_len > 0);
 
     //If read length is 1, call standard read from register
     if (read_len == 1)
     {
-        if (const auto maybe_result = read_from_register(device, registers[0], timeout_ms); maybe_result.has_value())
+        if (const auto maybe_result = read_from_register(registers[0]); maybe_result.has_value())
         {
             results[0] = maybe_result.value();
             return true;
@@ -215,16 +299,21 @@ bool gp2y0e02b::burst_read_from_register(const i2c_device* device,
     }
 
     //Registers MUST be adjacent for burst read.
-    auto prev = register_map_tag::UNKNOWN;
+    auto prev = static_cast<uint8_t>(register_map_tag::UNKNOWN);
     for (size_t i = 0; i < read_len; i++)
     {
         const auto current_tag = registers[i];
-        assert(i == 0 || current_tag == prev);
-        prev = current_tag;
+        const auto current_tag_addr = static_cast<uint8_t>(current_tag);
+
+        if (i > 0)
+            assert(current_tag_addr == prev + 1);
+
+        prev = current_tag_addr;
     }
 
     uint8_t target_register = static_cast<uint8_t>(registers[0]);
-    uint8_t addr_write = GP2Y0E02B_ADDR_AS_WRITE(device->address);
+    uint8_t addr_write = get_write_addr();
+
     i2c_operation_job_t ops_0[] = {
         { .command = I2C_MASTER_CMD_START },    //I2C Start Cycle 1
         {                                       //Select address for write
@@ -246,7 +335,7 @@ bool gp2y0e02b::burst_read_from_register(const i2c_device* device,
         { .command = I2C_MASTER_CMD_STOP },    //I2C Stop Cycle 1
     };
 
-    uint8_t addr_read = GP2Y0E02B_ADDR_AS_READ(device->address);
+    uint8_t addr_read = get_read_addr();
     const auto buffer_read = std::make_unique<uint8_t[]>(read_len); //alloc read buffer that will be freed at end of scope
 
     i2c_operation_job_t ops_1[] = {
@@ -271,7 +360,7 @@ bool gp2y0e02b::burst_read_from_register(const i2c_device* device,
     };
 
     const auto response_select_register = i2c_master_execute_defined_operations(
-        device->handle,
+        handle->handle,
         ops_0, sizeof(ops_0) / sizeof(i2c_operation_job_t),
         timeout_ms
     );
@@ -279,8 +368,11 @@ bool gp2y0e02b::burst_read_from_register(const i2c_device* device,
     if (response_select_register != ESP_OK)
         return false;
 
+    //Delay between selecting register and reading
+    vTaskDelay(get_read_delay(registers[0]) / portTICK_PERIOD_MS);
+
     const auto response_read_register = i2c_master_execute_defined_operations(
-        device->handle,
+        handle->handle,
         ops_1, sizeof(ops_1) / sizeof(i2c_operation_job_t),
         timeout_ms
     );

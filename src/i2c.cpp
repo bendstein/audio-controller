@@ -77,29 +77,3 @@ i2c_device i2c_init_device(i2c_master_bus_handle_t bus, const uint8_t addr, cons
         .type = type
     };
 }
-
-[[nodiscard]]
-bool i2c_ping_device(i2c_device* device, const int timeout_ms)
-{
-    logi("i2c", "Ping I2C device " + device->to_string());
-
-    bool result;
-
-    switch (device->type)
-    {
-        case i2c_device_type::GP2Y0E02B:
-            result = gp2y0e02b::ping(device, timeout_ms);
-            break;
-        case i2c_device_type::UNKNOWN:
-        default:
-            result = false;
-            break;
-    }
-
-    if (result)
-        logi("i2c", "Pong " + device->to_string());
-    else
-        logw("i2c", "No pong from " + device->to_string());
-
-    return result;
-}

@@ -38,34 +38,38 @@ void app_main()
     configure_gp2y0e02b(i2c_bus);
 #endif
 
-        const auto sensor_0 = i2c_init_device(
+        const auto sensor_0_handle = i2c_init_device(
             i2c_bus,
             0x80,
             i2c_device_type::GP2Y0E02B);
 
+        const auto sensor_0 = new gp2y0e02b::distance_sensor(&sensor_0_handle, 5000);
+
+        //Get initial distance shift
+        while (!sensor_0->update_distance_shift())
+        {
+            loge("app_main", "Failed to read distance shift.");
+            vTaskDelay(1000 / portTICK_PERIOD_MS);
+        }
+
+        logi("app_main", std::format("Distance shift: {}",
+            static_cast<uint8_t>(sensor_0->get_distance_shift())));
+        vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+        //Read distance in a loop
         while (true)
         {
-            const auto maybe_value = gp2y0e02b::read_from_register(
-                &sensor_0,
-                gp2y0e02b::register_map_tag::DISTANCE_3_THRU_0,
-                5000
-            ).and_then([](const gp2y0e02b::register_map_entry entry)
+            uint8_t distance = 0;
+            if (sensor_0->update_distance(&distance))
             {
-                return std::optional(entry.data.distance_3_thru_0);
-            });
-
-            if (maybe_value.has_value())
-            {
-                logi("app_main", std::format("Active/Standby: {}",
-                    static_cast<uint8_t>(maybe_value->distance_part)));
+                logi("app_main", std::format("Current distance: {}", distance));
             }
             else
             {
-                logw("app_main", "Active/Standby register query returned no result.");
+                loge("app_main", "Failed to read sensor distance.");
             }
 
-            // auto success = i2c_ping_device(&sensor_0, 5000);
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            vTaskDelay(5000 / portTICK_PERIOD_MS);
         }
     }
     catch (const std::exception& e)

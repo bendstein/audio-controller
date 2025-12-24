@@ -26,7 +26,4 @@ i2c_master_bus_handle_t i2c_init_bus();
 [[nodiscard]]
 i2c_device i2c_init_device(i2c_master_bus_handle_t bus, uint8_t addr, i2c_device_type type);
 
-[[nodiscard]]
-bool i2c_ping_device(i2c_device* device, int timeout_ms);
-
 #endif //AUDIO_CONTROLLER_I2C_H
