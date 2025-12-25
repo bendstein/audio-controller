@@ -14,16 +14,12 @@
 #define I2C_BUS_TRANS_QUEUE_DEPTH   0
 #define I2C_BUS_INTERNAL_PULLUP     1
 #define I2C_BUS_ALLOW_SLEEP         0
-#define I2C_DEVICE_SCL_SPEED_HZ     400000
+#define I2C_DEVICE_SCL_SPEED_HZ     100000
 #define I2C_DEVICE_SCL_WAIT_US      0
 
 #include "driver/i2c_types.h"
-#include "i2c_device.h"
 
 [[nodiscard]]
 i2c_master_bus_handle_t i2c_init_bus();
-
-[[nodiscard]]
-i2c_device i2c_init_device(i2c_master_bus_handle_t bus, uint8_t addr, i2c_device_type type);
 
 #endif //AUDIO_CONTROLLER_I2C_H

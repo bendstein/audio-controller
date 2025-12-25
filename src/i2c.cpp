@@ -11,7 +11,6 @@
 #include <format>
 
 #include "app_common.h"
-#include "gp2y0e02b.h"
 
 [[nodiscard]]
 i2c_master_bus_handle_t i2c_init_bus()
@@ -46,34 +45,4 @@ i2c_master_bus_handle_t i2c_init_bus()
         reinterpret_cast<uintptr_t>(handle)));
 
     return handle;
-}
-
-[[nodiscard]]
-i2c_device i2c_init_device(i2c_master_bus_handle_t bus, const uint8_t addr, const i2c_device_type type)
-{
-    logi("i2c", std::format("Init I2C device 0x{:02X}.", addr));
-
-    constexpr i2c_device_config_t device_cfg = {
-        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
-        .device_address = I2C_DEVICE_ADDRESS_NOT_USED,
-        .scl_speed_hz = I2C_DEVICE_SCL_SPEED_HZ,
-        .scl_wait_us = I2C_DEVICE_SCL_WAIT_US,
-        .flags = {
-            .disable_ack_check = false
-        }
-    };
-
-    i2c_master_dev_handle_t handle;
-
-    ESP_ERROR_CHECK(i2c_master_bus_add_device(bus, &device_cfg, &handle));
-
-    logi("i2c", std::format("Finished initializing I2C device 0x{:02X}. Handle: 0x{:08X}",
-        addr,
-        reinterpret_cast<uintptr_t>(handle)));
-
-    return {
-        .handle = handle,
-        .address = addr,
-        .type = type
-    };
 }

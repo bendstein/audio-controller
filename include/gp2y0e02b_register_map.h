@@ -343,6 +343,12 @@ namespace gp2y0e02b
     {
         register_map_tag tag;
         register_map_entry_value_union data;
+
+        [[nodiscard]]
+        uint8_t get_register_address() const
+        {
+            return static_cast<uint8_t>(tag);
+        }
     };
 }
 
