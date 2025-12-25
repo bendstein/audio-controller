@@ -79,6 +79,15 @@ namespace gp2y0e02b
         [[nodiscard]] bool try_update_distance_shift(shift_bit* distance_shift_out = nullptr, shift_bit* prev_distance_shift_out = nullptr);
 
         /**
+         * Write the new shift bit to the sensor register, and update cached value.
+         * @param new_shift_bit The value to write to the register
+         * @param prev_distance_shift_out Previous state of this value. Ignored if nullptr.
+         * @return Whether the action was successful.
+         * @remark Side effect: Update cached state of this value
+         */
+        [[nodiscard]] bool try_apply_distance_shift(shift_bit new_shift_bit, shift_bit* prev_distance_shift_out = nullptr);
+
+        /**
          * @param entry The register entry to read
          * @return Whether the read was successful
          * @remark Side effect: populates entry->data

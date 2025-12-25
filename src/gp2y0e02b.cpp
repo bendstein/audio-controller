@@ -114,6 +114,29 @@ bool gp2y0e02b::distance_sensor::try_update_distance(uint8_t* distance_out, uint
     return true;
 }
 
+bool gp2y0e02b::distance_sensor::try_apply_distance_shift(const shift_bit new_shift_bit, shift_bit* prev_distance_shift_out)
+{
+    if (prev_distance_shift_out != nullptr) //Output prev value
+        *prev_distance_shift_out = get_distance_shift();
+
+    const register_map_entry shift_entry = {
+        .tag = register_map_tag::SHIFT_BIT,
+        .data = {
+            .shift_bit = {
+                .shift = new_shift_bit
+            }
+        }
+    };
+
+    if (!try_write_to_register(&shift_entry))
+        return false;
+
+    state.distance_shift = new_shift_bit; //Update cached value
+
+    return true;
+}
+
+
 bool gp2y0e02b::distance_sensor::try_read_from_register(register_map_entry* entry) const
 {
     const uint8_t target_register = entry->get_register_address();

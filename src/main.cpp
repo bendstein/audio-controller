@@ -43,15 +43,31 @@ void app_main()
         const auto sensor_0 = *maybe_sensor_0;
 
         //Get initial distance shift
+        logi(NAMEOF(app_main), "Get current distance shift.");
         while (!sensor_0->try_update_distance_shift())
         {
             loge(NAMEOF(app_main), "Failed to read distance shift.");
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            vTaskDelay(100 / portTICK_PERIOD_US);
         }
 
         logi(NAMEOF(app_main), std::format("Distance shift: {}",
             static_cast<uint8_t>(sensor_0->get_distance_shift())));
-        vTaskDelay(1000 / portTICK_PERIOD_MS);
+
+        if (sensor_0->get_distance_shift() != gp2y0e02b::shift_bit::cm_128)
+        {
+            logi(NAMEOF(app_main), "Update distance shift");
+
+            while (!sensor_0->try_apply_distance_shift(gp2y0e02b::shift_bit::cm_128))
+            {
+                loge(NAMEOF(app_main), "Failed to update distance shift.");
+                vTaskDelay(100 / portTICK_PERIOD_US);
+            }
+
+            logi(NAMEOF(app_main), std::format("Distance shift: {}",
+                static_cast<uint8_t>(sensor_0->get_distance_shift())));
+        }
+
+        vTaskDelay(100 / portTICK_PERIOD_US);
 
         //Read distance in a loop
         while (true)
@@ -66,7 +82,7 @@ void app_main()
                 loge(NAMEOF(app_main), "Failed to read sensor distance.");
             }
 
-            vTaskDelay(1000 / portTICK_PERIOD_MS);
+            vTaskDelay(100 / portTICK_PERIOD_US);
         }
     }
     catch (const std::exception& e)
