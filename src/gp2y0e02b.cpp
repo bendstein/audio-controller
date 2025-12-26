@@ -136,6 +136,60 @@ bool gp2y0e02b::distance_sensor::try_apply_distance_shift(const shift_bit new_sh
     return true;
 }
 
+bool gp2y0e02b::distance_sensor::try_soft_reset()
+{
+    //Set clock to manual
+    constexpr register_map_entry clock_manual_entry = {
+        .tag = register_map_tag::CLOCK_SELECT,
+        .data = {
+            .clock_select = {
+                .clock = clock_select::clk_manual
+            }
+        }
+    };
+
+    if (!try_write_to_register(&clock_manual_entry))
+        return false;
+
+    //After this point, we want to set clock back to automatic,
+    //even if setting the software reset register fails
+    auto is_success = true;
+
+    //Write to reset register to start reset
+    constexpr register_map_entry reset_entry = {
+        .tag = register_map_tag::SOFTWARE_RESET,
+        .data = {
+            .software_reset = {
+                ._dummy = 0,
+                .reset = software_reset::reset
+            }
+        }
+    };
+
+    if (!try_write_to_register(&reset_entry))
+        is_success = false;
+
+    //Set clock to automatic
+    constexpr register_map_entry clock_auto_entry = {
+        .tag = register_map_tag::CLOCK_SELECT,
+        .data = {
+            .clock_select = {
+                .clock = clock_select::clk_auto
+            }
+        }
+    };
+
+    if (!try_write_to_register(&clock_auto_entry))
+        return false;
+
+    if (!is_success)
+        return false;
+
+    //If successful, set cached state back to default, as it
+    //should no longer be valid
+    state.reset();
+    return true;
+}
 
 bool gp2y0e02b::distance_sensor::try_read_from_register(register_map_entry* entry) const
 {

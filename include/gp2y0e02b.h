@@ -15,6 +15,15 @@ namespace gp2y0e02b
     {
         uint8_t distance;
         shift_bit distance_shift;
+
+        /**
+         * Set values back to default
+         */
+        void reset()
+        {
+            distance = 0;
+            distance_shift = shift_bit::cm_64;
+        }
     };
 
     class distance_sensor
@@ -32,6 +41,7 @@ namespace gp2y0e02b
             : handle(device_handle), address(address)
         {
             assert(device_handle != nullptr);
+            state.reset();
         }
 
         distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address, const int32_t timeout)
@@ -86,6 +96,13 @@ namespace gp2y0e02b
          * @remark Side effect: Update cached state of this value
          */
         [[nodiscard]] bool try_apply_distance_shift(shift_bit new_shift_bit, shift_bit* prev_distance_shift_out = nullptr);
+
+        /**
+         * Try performing a software reset
+         * @return Whether the operation was successful
+         * @remark Side effect: restarts device, resets cached state
+         */
+        [[nodiscard]] bool try_soft_reset();
 
         /**
          * @param entry The register entry to read
