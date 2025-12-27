@@ -1,5 +1,7 @@
 #include "app_common.h"
 #include "i2c.h"
+#include "setup.h"
+#include "tasks.h"
 
 #include "driver/gpio.h"
 #include "esp_log.h"
@@ -31,55 +33,95 @@ void app_main()
     {
         const auto i2c_bus = i2c_init_bus();
 
-        const auto maybe_sensor_0 = gp2y0e02b::distance_sensor::try_create_on_bus(
-            i2c_bus,
-            gp2y0e02b::distance_sensor::I2C_ADDR_DFT,
-            5000
-        );
+        gpio_reset_pin(PIN_LED_BUILTIN);
+        gpio_set_direction(PIN_LED_BUILTIN, GPIO_MODE_OUTPUT);
+        gpio_set_level(PIN_LED_BUILTIN, HIGH);
 
-        if (!maybe_sensor_0.has_value())
-            throw std::runtime_error("Failed to create sensor");
+        constexpr size_t SENSORS_COUNT = 1;
+        constexpr uint8_t sensor_addresses[SENSORS_COUNT] = {
+            gp2y0e02b::distance_sensor::I2C_ADDR_DFT
+        };
+        std::optional<gp2y0e02b::distance_sensor*> sensors[SENSORS_COUNT] = {};
+        std::optional<TaskHandle_t> sensor_tasks[SENSORS_COUNT] = {};
 
-        const auto sensor_0 = *maybe_sensor_0;
-
-        //Get initial distance shift
-        logi(NAMEOF(app_main), "Get current distance shift.");
-        while (!sensor_0->try_update_distance_shift())
+        for (auto i = 0; i < SENSORS_COUNT; i++)
         {
-            loge(NAMEOF(app_main), "Failed to read distance shift.");
-            vTaskDelay(100 / portTICK_PERIOD_US);
-        }
+            const auto maybe_sensor = gp2y0e02b::distance_sensor::try_create_on_bus(
+                i2c_bus,
+                sensor_addresses[i],
+                5000
+            );
+            sensors[i] = maybe_sensor;
 
-        logi(NAMEOF(app_main), std::format("Distance shift: {}",
-            static_cast<uint8_t>(sensor_0->get_distance_shift())));
-
-        if (sensor_0->get_distance_shift() != gp2y0e02b::shift_bit::cm_128)
-        {
-            logi(NAMEOF(app_main), "Update distance shift");
-
-            while (!sensor_0->try_apply_distance_shift(gp2y0e02b::shift_bit::cm_128))
+            if (maybe_sensor.has_value())
             {
-                loge(NAMEOF(app_main), "Failed to update distance shift.");
-                vTaskDelay(100 / portTICK_PERIOD_US);
-            }
+                if (const auto sensor = *maybe_sensor; try_configure_gp2y0e02b(sensor))
+                {
+                    logi(NAMEOF(app_main),
+                        std::format("Successfully configured sensor {}", i));
 
-            logi(NAMEOF(app_main), std::format("Distance shift: {}",
-                static_cast<uint8_t>(sensor_0->get_distance_shift())));
-        }
+                    BaseType_t create_task_result;
+                    TaskHandle_t task_handle;
 
-        vTaskDelay(100 / portTICK_PERIOD_US);
-
-        //Read distance in a loop
-        while (true)
-        {
-            uint8_t distance = 0;
-            if (sensor_0->try_update_distance(&distance))
-            {
-                logi(NAMEOF(app_main), std::format("Current distance: {}", distance));
+                    if (try_create_distance_sensor_task(
+                        std::format("gp2y-{:02X}", i),
+                        sensor,
+                        &create_task_result,
+                        &task_handle
+                    ))
+                    {
+                        logi(NAMEOF(app_main),
+                            std::format("Successfully created task for sensor {}", i));
+                        sensor_tasks[i] = task_handle;
+                    }
+                    else
+                    {
+                        loge(NAMEOF(app_main),
+                            std::format("Failed to create task for sensor {}", i));
+                        sensor_tasks[i] = std::nullopt;
+                    }
+                }
+                else
+                {
+                    loge(NAMEOF(app_main),
+                        std::format("Failed to configure sensor {}", i));
+                    sensor_tasks[i] = std::nullopt;
+                }
             }
             else
             {
-                loge(NAMEOF(app_main), "Failed to read sensor distance.");
+                loge(NAMEOF(app_main),
+                    std::format("Failed to init sensor {}", i));
+                sensor_tasks[i] = std::nullopt;
+            }
+        }
+
+        while (true)
+        {
+            for (auto i = 0; i < SENSORS_COUNT; i++)
+            {
+                if (const auto maybe_sensor = sensors[i];
+                    maybe_sensor.has_value())
+                {
+                    if (i > 0 && (i % 100) == 0)
+                    {
+                        const auto sensor_task = *(sensor_tasks[i]);
+                        logi(NAMEOF(app_main),
+                            std::format("uxTaskGetStackHighWaterMark {}: {}",
+                                i,
+                                uxTaskGetStackHighWaterMark(sensor_task)));
+                    }
+
+                    const auto sensor = *maybe_sensor;
+                    uint8_t distance = sensor->get_distance();
+                    gpio_set_level(PIN_LED_BUILTIN, DIGITAL(distance < 64));
+                    logi(NAMEOF(app_main), std::format("Current distance: {}", distance));
+                }
+                else
+                {
+                    logw(NAMEOF(app_main),
+                        std::format("No sensor {}", i));
+                }
             }
 
             vTaskDelay(100 / portTICK_PERIOD_US);

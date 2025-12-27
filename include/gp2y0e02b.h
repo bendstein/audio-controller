@@ -4,10 +4,17 @@
 
 #ifndef AUDIO_CONTROLLER_GP2Y0E02B_H
 #define AUDIO_CONTROLLER_GP2Y0E02B_H
-#include <driver/i2c_master.h>
+#include <optional>
+#include <stdexcept>
 
-#include "gp2y0e02b_register_map.h"
+#include <driver/i2c_master.h>
+#include "freertos/FreeRTOS.h"
+#include "freertos/task.h"
+#include "freertos/FreeRTOSConfig.h"
+
 #include "i2c.h"
+#include "app_common.h"
+#include "gp2y0e02b_register_map.h"
 
 namespace gp2y0e02b
 {
@@ -36,6 +43,9 @@ namespace gp2y0e02b
         int32_t timeout_ms = -1;
         distance_sensor_state state {};
         uint8_t address;
+
+        [[nodiscard]] bool try_select_register(register_map_tag tag) const;
+
     public:
         explicit distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address)
             : handle(device_handle), address(address)
@@ -117,7 +127,7 @@ namespace gp2y0e02b
          * @return Whether the read was successful
          * @remark Side effect: populates each entries[i]->data
          */
-        [[nodiscard]] bool try_burst_read_from_register (register_map_entry entries[], size_t read_len) const;
+        [[nodiscard]] bool try_burst_read_from_register(register_map_entry entries[], size_t read_len) const;
 
         /**
          * @param entry The register entry to write

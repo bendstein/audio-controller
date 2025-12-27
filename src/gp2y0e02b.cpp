@@ -191,19 +191,24 @@ bool gp2y0e02b::distance_sensor::try_soft_reset()
     return true;
 }
 
-bool gp2y0e02b::distance_sensor::try_read_from_register(register_map_entry* entry) const
+bool gp2y0e02b::distance_sensor::try_select_register(register_map_tag tag) const
 {
-    const uint8_t target_register = entry->get_register_address();
-    uint8_t buffer_read = 0;
-
-    //Select register
+    const uint8_t target_register = static_cast<uint8_t>(tag);
     const auto result_select_register = i2c_master_transmit(
         handle,
         &target_register, 1,
         timeout_ms
     );
 
-    if (result_select_register != ESP_OK)
+    return result_select_register == ESP_OK;
+}
+
+bool gp2y0e02b::distance_sensor::try_read_from_register(register_map_entry* entry) const
+{
+    uint8_t buffer_read = 0;
+
+    //Select register
+    if (!try_select_register(entry->tag))
         return false;
 
     //Data hold/setup time
@@ -246,16 +251,8 @@ bool gp2y0e02b::distance_sensor::try_burst_read_from_register(register_map_entry
         prev_address = current_addr;
     }
 
-    const uint8_t target_register = entries[0].get_register_address();
-
     //Select register
-    const auto result_select_register = i2c_master_transmit(
-        handle,
-        &target_register, 1,
-        timeout_ms
-    );
-
-    if (result_select_register != ESP_OK)
+    if (!try_select_register(entries[0].tag))
         return false;
 
     //Data hold/setup time
@@ -285,16 +282,8 @@ bool gp2y0e02b::distance_sensor::try_burst_read_from_register(register_map_entry
 
 bool gp2y0e02b::distance_sensor::try_write_to_register(const register_map_entry* entry) const
 {
-    const uint8_t target_register = entry->get_register_address();
-
     //Select register
-    const auto result_select_register = i2c_master_transmit(
-        handle,
-        &target_register, 1,
-        timeout_ms
-    );
-
-    if (result_select_register != ESP_OK)
+    if (!try_select_register(entry->tag))
         return false;
 
     //Data hold/setup time
@@ -307,5 +296,5 @@ bool gp2y0e02b::distance_sensor::try_write_to_register(const register_map_entry*
         timeout_ms
     );
 
-    return  result_read_register == ESP_OK;
+    return result_read_register == ESP_OK;
 }
