@@ -2,7 +2,7 @@
 // Created by bendstein on 12/20/2025.
 //
 #include "app_common.h"
-#include "gp2y0e02b.h"
+#include "i2c/gp2y0e02b/distance_sensor.h"
 
 #include <memory>
 #include <driver/i2c.h>

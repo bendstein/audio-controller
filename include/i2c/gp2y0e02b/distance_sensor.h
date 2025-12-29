@@ -12,9 +12,9 @@
 #include "freertos/task.h"
 #include "freertos/FreeRTOSConfig.h"
 
-#include "i2c.h"
+#include "i2c/i2c.h"
 #include "app_common.h"
-#include "gp2y0e02b_register_map.h"
+#include "register_map.h"
 
 namespace gp2y0e02b
 {
@@ -38,6 +38,7 @@ namespace gp2y0e02b
     public:
         static constexpr uint8_t I2C_ADDR_DFT = 0x80;
         static constexpr gpio_num_t PIN_VPP_ENABLE = GPIO_NUM_14;
+        static constexpr int32_t TIMEOUT_MS_DFT = 5000;
     private:
         i2c_master_dev_handle_t handle;
         int32_t timeout_ms = -1;
@@ -47,7 +48,7 @@ namespace gp2y0e02b
         [[nodiscard]] bool try_select_register(register_map_tag tag) const;
 
     public:
-        explicit distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address)
+        distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address)
             : handle(device_handle), address(address)
         {
             assert(device_handle != nullptr);
@@ -62,6 +63,15 @@ namespace gp2y0e02b
 
         [[nodiscard]] int32_t get_timeout_ms() const { return timeout_ms; }
         void set_timeout(const int32_t timeout) { timeout_ms = timeout; }
+
+        [[nodiscard]] i2c_master_dev_handle_t get_handle() const { return handle; }
+
+        [[nodiscard]] std::string get_log_key() const
+        {
+            return std::format("[distance sensor 0x{:02X}; 0x{:08X}]",
+                address,
+                reinterpret_cast<uintptr_t>(handle));
+        }
 
         /**
          * @return Current state of this value
@@ -152,8 +162,8 @@ namespace gp2y0e02b
             const i2c_device_config_t device_cfg = {
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
                 .device_address = static_cast<uint8_t>(addr >> 1),
-                .scl_speed_hz = I2C_DEVICE_SCL_SPEED_HZ,
-                .scl_wait_us = I2C_DEVICE_SCL_WAIT_US,
+                .scl_speed_hz = I2C_DEV_SCL_SPEED_HZ,
+                .scl_wait_us = I2C_DEV_SCL_WAIT_US,
                 .flags = {
                     .disable_ack_check = false
                 }

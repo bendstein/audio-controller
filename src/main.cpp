@@ -1,11 +1,9 @@
 #include "app_common.h"
-#include "i2c.h"
+#include "i2c/gp2y0e02b/distance_sensor.h"
 #include "setup.h"
 #include "tasks.h"
 
 #include "driver/gpio.h"
-#include "esp_log.h"
-#include "gp2y0e02b.h"
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 
@@ -31,8 +29,6 @@ void app_main()
 
     try
     {
-        const auto i2c_bus = i2c_init_bus();
-
         gpio_reset_pin(PIN_LED_BUILTIN);
         gpio_set_direction(PIN_LED_BUILTIN, GPIO_MODE_OUTPUT);
         gpio_set_level(PIN_LED_BUILTIN, HIGH);
@@ -41,78 +37,44 @@ void app_main()
         constexpr uint8_t sensor_addresses[SENSORS_COUNT] = {
             gp2y0e02b::distance_sensor::I2C_ADDR_DFT
         };
-        std::optional<gp2y0e02b::distance_sensor*> sensors[SENSORS_COUNT] = {};
-        std::optional<TaskHandle_t> sensor_tasks[SENSORS_COUNT] = {};
 
-        for (auto i = 0; i < SENSORS_COUNT; i++)
-        {
-            const auto maybe_sensor = gp2y0e02b::distance_sensor::try_create_on_bus(
-                i2c_bus,
-                sensor_addresses[i],
-                5000
-            );
-            sensors[i] = maybe_sensor;
+        const auto i2c_bus_0 = init_i2c_bus(
+            I2C_BUS_PORT_0,
+            I2C_PIN_SDA_0,
+            I2C_PIN_SCL_0
+        );
 
-            if (maybe_sensor.has_value())
-            {
-                if (const auto sensor = *maybe_sensor; try_configure_gp2y0e02b(sensor))
-                {
-                    logi(NAMEOF(app_main),
-                        std::format("Successfully configured sensor {}", i));
+        const auto i2c_bus_1 = init_i2c_bus(
+            I2C_BUS_PORT_1,
+            I2C_PIN_SDA_1,
+            I2C_PIN_SCL_1
+        );
 
-                    BaseType_t create_task_result;
-                    TaskHandle_t task_handle;
+        std::optional<std::pair<gp2y0e02b::distance_sensor*, TaskHandle_t>> sensors_tasks[SENSORS_COUNT] = {};
+        std::optional<mcp4725::dac*> dac = std::nullopt;
+        std::optional<TaskHandle_t> dac_task = std::nullopt;
 
-                    if (try_create_distance_sensor_task(
-                        std::format("gp2y-{:02X}", i),
-                        sensor,
-                        &create_task_result,
-                        &task_handle
-                    ))
-                    {
-                        logi(NAMEOF(app_main),
-                            std::format("Successfully created task for sensor {}", i));
-                        sensor_tasks[i] = task_handle;
-                    }
-                    else
-                    {
-                        loge(NAMEOF(app_main),
-                            std::format("Failed to create task for sensor {}", i));
-                        sensor_tasks[i] = std::nullopt;
-                    }
-                }
-                else
-                {
-                    loge(NAMEOF(app_main),
-                        std::format("Failed to configure sensor {}", i));
-                    sensor_tasks[i] = std::nullopt;
-                }
-            }
-            else
-            {
-                loge(NAMEOF(app_main),
-                    std::format("Failed to init sensor {}", i));
-                sensor_tasks[i] = std::nullopt;
-            }
-        }
+        init_distance_sensors(i2c_bus_0, sensor_addresses, SENSORS_COUNT, sensors_tasks);
+        init_dac(i2c_bus_1, mcp4725::dac::I2C_ADDR_DFT, &dac, &dac_task);
 
         while (true)
         {
             for (auto i = 0; i < SENSORS_COUNT; i++)
             {
-                if (const auto maybe_sensor = sensors[i];
+                if (const auto maybe_sensor = sensors_tasks[i];
                     maybe_sensor.has_value())
                 {
+                    const auto sensor = maybe_sensor->first;
+                    const auto sensor_task = maybe_sensor->second;
+
                     if (i > 0 && (i % 100) == 0)
                     {
-                        const auto sensor_task = *(sensor_tasks[i]);
                         logi(NAMEOF(app_main),
                             std::format("uxTaskGetStackHighWaterMark {}: {}",
                                 i,
                                 uxTaskGetStackHighWaterMark(sensor_task)));
                     }
 
-                    const auto sensor = *maybe_sensor;
                     uint8_t distance = sensor->get_distance();
                     gpio_set_level(PIN_LED_BUILTIN, DIGITAL(distance < 64));
                     logi(NAMEOF(app_main), std::format("Current distance: {}", distance));
