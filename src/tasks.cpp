@@ -70,12 +70,18 @@ void dac_task(void* dac_pointer)
 {
     const auto dac = static_cast<mcp4725::dac*>(dac_pointer);
 
+    timeval ts {};
     for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
     {
-        const auto x = static_cast<ushort>(floor(
-            (0x0FFF / 2.)
-            * (1 * sin(400 * i))
-        ));
+        gettimeofday(&ts, nullptr);
+
+        //440hz sin wave centered at 0.5
+        const auto s = (1 + sin(2 * M_PI * (440. / 1000000) * ts.tv_usec)) / 2.;
+
+        // const auto x = 0.5 * 0x0FFF * (s < 0.5? 0 : 1);
+
+        // //Scale
+        const auto x = static_cast<ushort>(floor(0x0FFF * s));
 
         if (dac->try_write_value(x))
         {
