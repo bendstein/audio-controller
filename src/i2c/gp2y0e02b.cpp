@@ -193,7 +193,7 @@ bool gp2y0e02b::distance_sensor::try_soft_reset()
 
 bool gp2y0e02b::distance_sensor::try_select_register(register_map_tag tag) const
 {
-    const uint8_t target_register = static_cast<uint8_t>(tag);
+    const auto target_register = static_cast<uint8_t>(tag);
     const auto result_select_register = i2c_master_transmit(
         handle,
         &target_register, 1,

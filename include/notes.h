@@ -12,7 +12,7 @@
 /**
  * Enum of all notes in the chromatic scale
  */
-enum struct MusicalNote : uint8_t
+enum struct musical_note : uint8_t
 {
     C = 0,
     C_Sharp = 1, D_Flat = C_Sharp,
@@ -39,9 +39,55 @@ enum struct MusicalNote : uint8_t
  *  e.g. Tuning::Equal, Tuning::Just?
  */
 [[nodiscard]]
-constexpr double GetMusicalNoteFrequency(const MusicalNote note, const uint8_t octave)
+constexpr double musical_note_freq_hz(const musical_note note, const uint8_t octave)
 {
-    return FREQUENCY_C0 * std::pow(2, (static_cast<uint8_t>(note) + (octave * static_cast<uint8_t>(MusicalNote::MAX))) / (static_cast<uint8_t>(MusicalNote::MAX) * 1.));
+    return FREQUENCY_C0 * std::pow(2, (static_cast<uint8_t>(note) + (octave * static_cast<uint8_t>(musical_note::MAX))) / (static_cast<uint8_t>(musical_note::MAX) * 1.));
 }
+
+enum struct tone_type : uint8_t {
+    note,
+    frequency
+};
+
+struct tone {
+    tone_type type;
+    union tone_value {
+        tone_value() : frequency_hz(0) {}
+        explicit tone_value(const double frequency_hz)
+            : frequency_hz(frequency_hz) {}
+        tone_value(const musical_note note_value, const uint8_t octave)
+            : note({.name = note_value, .octave = octave}) {}
+
+        double frequency_hz;
+        struct note {
+            musical_note name;
+            uint8_t octave;
+        } note;
+    } value;
+
+    tone() : type(tone_type::frequency) {}
+
+    explicit tone(const double frequency_hz) : type(tone_type::frequency), value(frequency_hz) { }
+
+    tone(const musical_note note, const uint8_t octave) : type(tone_type::note), value(note, octave) { }
+
+    [[nodiscard]]
+    double frequency_hz() const {
+        switch(type) {
+            case tone_type::note:
+                return musical_note_freq_hz(value.note.name, value.note.octave);
+            case tone_type::frequency:
+                return value.frequency_hz;
+            default:
+                return 0;
+        }
+    }
+
+    [[nodiscard]]
+    double frequency_megahz() const {
+        constexpr auto US_PER_SECOND = 1000000;
+        return frequency_hz() / US_PER_SECOND;
+    }
+};
 
 #endif //AUDIO_CONTROLLER_NOTES_H

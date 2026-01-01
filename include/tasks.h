@@ -8,6 +8,11 @@
 #include "i2c/mcp4725.h"
 #include "app_common.h"
 
+struct dac_task_param {
+    mcp4725::dac* dac;
+    mcp4725::wave_provider wave_provider;
+};
+
 bool try_create_distance_sensor_task(const std::string& task_name, gp2y0e02b::distance_sensor* sensor, BaseType_t* result_code, TaskHandle_t* task_handle);
 bool try_create_dac_task(const std::string& task_name, mcp4725::dac* dac, BaseType_t* result_code, TaskHandle_t* task_handle);
 

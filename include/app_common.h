@@ -62,6 +62,13 @@ uint8_t get_max_set_bit(TNumber value)
     return count;
 }
 
+inline long long total_microseconds(const timeval* time)
+{
+    constexpr auto US_PER_SECOND = 1000000;
+    return time->tv_usec
+        + time->tv_sec * US_PER_SECOND;
+}
+
 /**
  * Write message to the log.
  * @param tag Used to specify which component the message is from, and
