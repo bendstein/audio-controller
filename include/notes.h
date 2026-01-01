@@ -12,7 +12,7 @@
 /**
  * Enum of all notes in the chromatic scale
  */
-enum MusicalNote
+enum struct MusicalNote : uint8_t
 {
     C = 0,
     C_Sharp = 1, D_Flat = C_Sharp,
@@ -41,7 +41,7 @@ enum MusicalNote
 [[nodiscard]]
 constexpr double GetMusicalNoteFrequency(const MusicalNote note, const uint8_t octave)
 {
-    return FREQUENCY_C0 * std::pow(2, (note + (octave * MAX)) / (MAX * 1.));
+    return FREQUENCY_C0 * std::pow(2, (static_cast<uint8_t>(note) + (octave * static_cast<uint8_t>(MusicalNote::MAX))) / (static_cast<uint8_t>(MusicalNote::MAX) * 1.));
 }
 
 #endif //AUDIO_CONTROLLER_NOTES_H

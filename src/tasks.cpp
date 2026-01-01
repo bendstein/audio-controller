@@ -9,10 +9,12 @@
 
 #include <cmath>
 
+#include "notes.h"
+
 bool try_create_distance_sensor_task(const std::string& task_name,
-    gp2y0e02b::distance_sensor* sensor,
-    BaseType_t* result_code,
-    TaskHandle_t* task_handle)
+                                     gp2y0e02b::distance_sensor* sensor,
+                                     BaseType_t* result_code,
+                                     TaskHandle_t* task_handle)
 {
     constexpr uint32_t STACK_SIZE = 0x0800;
     constexpr UBaseType_t PRIORITY = 4;
@@ -70,15 +72,75 @@ void dac_task(void* dac_pointer)
 {
     const auto dac = static_cast<mcp4725::dac*>(dac_pointer);
 
+    constexpr size_t CHORDS_M = 5;
+    constexpr size_t CHORDS_N = 4;
+
+    const double chords[CHORDS_M][CHORDS_N] = {
+        {
+            GetMusicalNoteFrequency(MusicalNote::C, 5),
+            GetMusicalNoteFrequency(MusicalNote::E, 5),
+            GetMusicalNoteFrequency(MusicalNote::G, 5)
+        },
+        {
+            GetMusicalNoteFrequency(MusicalNote::A, 4),
+            GetMusicalNoteFrequency(MusicalNote::C, 5),
+            GetMusicalNoteFrequency(MusicalNote::E, 5),
+            GetMusicalNoteFrequency(MusicalNote::F, 5)
+        },
+        {
+            GetMusicalNoteFrequency(MusicalNote::B, 4),
+            GetMusicalNoteFrequency(MusicalNote::D, 5),
+            GetMusicalNoteFrequency(MusicalNote::F, 5)
+        },
+        {
+            GetMusicalNoteFrequency(MusicalNote::A, 4),
+            GetMusicalNoteFrequency(MusicalNote::D, 5),
+            GetMusicalNoteFrequency(MusicalNote::F, 5)
+        },
+        {
+            GetMusicalNoteFrequency(MusicalNote::G, 4),
+            GetMusicalNoteFrequency(MusicalNote::B, 4),
+            GetMusicalNoteFrequency(MusicalNote::D, 4),
+            GetMusicalNoteFrequency(MusicalNote::E, 4)
+        }
+    };
+
     timeval ts {};
+    time_t last_sec = 0;
+    size_t j = 0;
+
     for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
     {
         gettimeofday(&ts, nullptr);
+        const long us = ts.tv_usec;
 
-        //440hz sin wave centered at 0.5
-        const auto s = (1 + sin(2 * M_PI * (440. / 1000000) * ts.tv_usec)) / 2.;
+        if (const time_t sec = ts.tv_sec; sec - last_sec > 1)
+        {
+            last_sec = sec;
 
-        // const auto x = 0.5 * 0x0FFF * (s < 0.5? 0 : 1);
+            if (i > 0)
+                j = (j + 1) % CHORDS_M;
+        }
+
+        const auto chord = chords[j];
+
+        double s = 0;
+        size_t chord_n = 0;
+
+        for (auto k = 0; k < CHORDS_N; k++)
+        {
+            if (const auto tone = chord[k]; tone > 0)
+            {
+                chord_n++;
+                const auto sin_k = (1 + sin(2 * M_PI * (tone / 1000000) * us)) / 2.;
+                // const auto square_k = sin_k < 0.5? 0 : 1;
+                s += sin_k;
+                // s += square_k;
+            }
+        }
+
+        if (chord_n > 0)
+            s /= chord_n;
 
         // //Scale
         const auto x = static_cast<ushort>(floor(0x0FFF * s));

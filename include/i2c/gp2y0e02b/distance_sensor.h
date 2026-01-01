@@ -162,7 +162,7 @@ namespace gp2y0e02b
             const i2c_device_config_t device_cfg = {
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
                 .device_address = static_cast<uint8_t>(addr >> 1),
-                .scl_speed_hz = I2C_DEV_SCL_SPEED_HZ,
+                .scl_speed_hz = I2C_FAST_HZ,
                 .scl_wait_us = I2C_DEV_SCL_WAIT_US,
                 .flags = {
                     .disable_ack_check = false
