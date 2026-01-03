@@ -7,6 +7,34 @@
 #include "i2c/i2c.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
+setup_data do_setup()
+{
+    auto setup = setup_data {
+        .i2c_bus_0 = init_i2c_bus(
+             I2C_BUS_PORT_0,
+             I2C_PIN_SDA_0,
+             I2C_PIN_SCL_0
+         ),
+        .i2c_bus_1 = init_i2c_bus(
+            I2C_BUS_PORT_1,
+            I2C_PIN_SDA_1,
+            I2C_PIN_SCL_1
+        ),
+        .sensors = {},
+        .dac = std::nullopt,
+        .musical_distance_sensors = {},
+        .sensor_tasks = {},
+        .dac_task = std::nullopt
+    };
+
+    init_distance_sensors(&setup);
+    init_musical_distance_sensors(&setup);
+    init_dac(&setup);
+
+    return setup;
+}
+
+
 i2c_master_bus_handle_t init_i2c_bus(const i2c_port_num_t port, const gpio_num_t sda, const gpio_num_t scl)
 {
     logi("setup", "Init bus ");
@@ -39,19 +67,17 @@ i2c_master_bus_handle_t init_i2c_bus(const i2c_port_num_t port, const gpio_num_t
     return handle;
 }
 
-void init_distance_sensors(i2c_master_bus_handle_t bus,
-    const uint8_t sensor_addresses[], const size_t sensor_count,
-    std::optional<std::pair<gp2y0e02b::distance_sensor*, TaskHandle_t>> sensor_tasks[]
-)
+void init_distance_sensors(setup_data* setup)
 {
-    for (auto i = 0; i < sensor_count; i++)
+    for (auto i = 0; i < SENSORS_COUNT; i++)
     {
-        sensor_tasks[i] = std::nullopt;
+        setup->sensors[i] = std::nullopt;
+        setup->sensor_tasks[i] = std::nullopt;
 
         //Try to create each sensor, apply configuration, and start respective task
         if (const auto maybe_sensor = gp2y0e02b::distance_sensor::try_create_on_bus(
-            bus,
-            sensor_addresses[i],
+            setup->i2c_bus_0,
+            SENSOR_ADDRESSES[i],
             gp2y0e02b::distance_sensor::TIMEOUT_MS_DFT
         ); maybe_sensor.has_value())
         {
@@ -62,17 +88,15 @@ void init_distance_sensors(i2c_master_bus_handle_t bus,
                 logi("setup", std::format("{} Successfully configured distance sensor #{}.", (*maybe_sensor)->get_log_key(), i));
 
                 BaseType_t create_task_result;
-                TaskHandle_t task_handle;
 
                 if (try_create_distance_sensor_task(
-                    std::format("gp2y-{}-{:02X}", i, sensor_addresses[i]),
-                    *maybe_sensor,
+                    std::format("gp2y-{}-{:02X}", i, SENSOR_ADDRESSES[i]),
                     &create_task_result,
-                    &task_handle
+                    i,
+                    setup
                 ))
                 {
-                    logi("setup", std::format("{} Started task 0x{:08X} for distance sensor #{}.", (*maybe_sensor)->get_log_key(), reinterpret_cast<uintptr_t>(task_handle), i));
-                    sensor_tasks[i] = std::pair(*maybe_sensor, task_handle);
+                    logi("setup", std::format("{} Started task 0x{:08X} for distance sensor #{}.", (*maybe_sensor)->get_log_key(), reinterpret_cast<uintptr_t>(*setup->sensor_tasks[i]), i));
                 }
                 else
                 {
@@ -86,36 +110,58 @@ void init_distance_sensors(i2c_master_bus_handle_t bus,
         }
         else
         {
-            loge("setup", std::format("[distance sensor 0x{:02X}] Failed to create distance sensor #{}.", sensor_addresses[i], i));
+            loge("setup", std::format("[distance sensor 0x{:02X}] Failed to create distance sensor #{}.", SENSOR_ADDRESSES[i], i));
         }
     }
 }
 
-void init_dac(i2c_master_bus_handle_t bus, const uint8_t dac_address, std::optional<mcp4725::dac*>* dac, std::optional<TaskHandle_t>* task)
+void init_musical_distance_sensors(setup_data* setup)
 {
-    *dac = std::nullopt;
-    *task = std::nullopt;
+    //Define frequency ranges for each sensor
+    const piecewise_frequency_range_breakpoint* breakpoints[SENSORS_COUNT] = {
+        new piecewise_frequency_range_breakpoint[PIECEWISE_FREQUENCY_BREAKPOINT_COUNT]
+        {
+            {
+                .breakpoint = PIECEWISE_FREQUENCY_BREAKPOINTS[0],
+                .range = new single_frequency_range(new tone(musical_note::C, 4))
+            },
+            {
+                .breakpoint = PIECEWISE_FREQUENCY_BREAKPOINTS[1],
+                .range = new single_frequency_range(new tone(musical_note::C_Sharp, 4))
+            }
+        }
+    };
 
+    //Add each sensor with the sound data for each segment of length
+    for (auto i = 0; i < SENSORS_COUNT; i++)
+    {
+        if (const auto maybe_sensor = setup->sensors[i]; maybe_sensor.has_value())
+        {
+            const auto sensor = *maybe_sensor;
+            const auto sound_data = new piecewise_frequency_range(breakpoints[i], PIECEWISE_FREQUENCY_BREAKPOINT_COUNT);
+            setup->musical_distance_sensors[i] = new musical_distance_sensor(sensor, sound_data);
+        }
+    }
+}
+
+void init_dac(setup_data* setup)
+{
     if (const auto maybe_dac = mcp4725::dac::try_create_on_bus(
-        bus,
-        dac_address,
+        setup->i2c_bus_1,
+        DAC_ADDRESS,
         mcp4725::dac::TIMEOUT_MS_DFT); maybe_dac.has_value())
     {
         logi("setup", std::format("{} Created handle for dac.", (*maybe_dac)->get_log_key()));
 
         BaseType_t create_task_result;
-        TaskHandle_t task_handle;
 
         if (try_create_dac_task(
-            std::format("mcp4-{:02X}", dac_address),
-            *maybe_dac,
+            std::format("mcp4-{:02X}", DAC_ADDRESS),
             &create_task_result,
-            &task_handle
+            setup
         ))
         {
-            logi("setup", std::format("{} Started task 0x{:08X} for dac.", (*maybe_dac)->get_log_key(), reinterpret_cast<uintptr_t>(task_handle)));
-            *dac = maybe_dac;
-            *task = task_handle;
+            logi("setup", std::format("{} Started task 0x{:08X} for dac.", (*maybe_dac)->get_log_key(), reinterpret_cast<uintptr_t>(*setup->dac_task)));
         }
         else
         {
@@ -124,7 +170,7 @@ void init_dac(i2c_master_bus_handle_t bus, const uint8_t dac_address, std::optio
     }
     else
     {
-        loge("setup", std::format("[DAC 0x{:02X}] Failed to create DAC.", dac_address));
+        loge("setup", std::format("[DAC 0x{:02X}] Failed to create DAC.", DAC_ADDRESS));
     }
 }
 
@@ -150,4 +196,64 @@ bool try_configure_gp2y0e02b(gp2y0e02b::distance_sensor* sensor)
 
     //Return whether all operations succeeded
     return success;
+}
+
+bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, const size_t sensor_ndx, setup_data* setup)
+{
+    if (const auto maybe_sensor = setup->sensors[sensor_ndx];
+        maybe_sensor.has_value())
+    {
+        const auto sensor = *maybe_sensor;
+
+        TaskHandle_t task_handle;
+
+        *result_code = xTaskCreate(
+            distance_sensor_task,
+            task_name.c_str(),
+            DISTANCE_SENSOR_TASK_STACK_SIZE,
+            sensor,
+            DISTANCE_SENSOR_TASK_PRIORITY,
+            &task_handle
+        );
+
+        setup->sensor_tasks[sensor_ndx] = task_handle;
+        return *result_code == pdPASS;
+    }
+
+    return false;
+}
+
+bool try_create_dac_task(const std::string& task_name, BaseType_t* result_code, setup_data* setup)
+{
+    if (setup->dac.has_value())
+    {
+        const auto dac = *setup->dac;
+
+        auto task_param = dac_task_param {
+
+            .dac = dac,
+            .wave = new sin_wave_provider(),
+            .musical_distance_sensors = {}
+        };
+
+        for (auto i = 0; i < SENSORS_COUNT; i++)
+            task_param.musical_distance_sensors[i] = setup->musical_distance_sensors[i];
+
+        TaskHandle_t task_handle;
+
+        *result_code = xTaskCreate(
+            dac_task,
+            task_name.c_str(),
+            DAC_TASK_STACK_SIZE,
+            &task_param,
+            DAC_TASK_PRIORITY,
+            &task_handle
+        );
+
+        setup->dac_task = task_handle;
+
+        return *result_code == pdPASS;
+    }
+
+    return false;
 }

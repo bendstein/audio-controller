@@ -7,6 +7,9 @@
 
 namespace gp2y0e02b
 {
+    constexpr uint8_t SHIFT_BIT_DISTANCE_64 = 64;
+    constexpr uint8_t SHIFT_BIT_DISTANCE_128 = 128;
+
     enum struct register_map_tag : uint8_t
     {
         UNKNOWN,

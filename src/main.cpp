@@ -33,59 +33,10 @@ void app_main()
         gpio_set_direction(PIN_LED_BUILTIN, GPIO_MODE_OUTPUT);
         gpio_set_level(PIN_LED_BUILTIN, HIGH);
 
-        constexpr size_t SENSORS_COUNT = 1;
-        constexpr uint8_t sensor_addresses[SENSORS_COUNT] = {
-            gp2y0e02b::distance_sensor::I2C_ADDR_DFT
-        };
-
-        const auto i2c_bus_0 = init_i2c_bus(
-            I2C_BUS_PORT_0,
-            I2C_PIN_SDA_0,
-            I2C_PIN_SCL_0
-        );
-
-        const auto i2c_bus_1 = init_i2c_bus(
-            I2C_BUS_PORT_1,
-            I2C_PIN_SDA_1,
-            I2C_PIN_SCL_1
-        );
-
-        std::optional<std::pair<gp2y0e02b::distance_sensor*, TaskHandle_t>> sensors_tasks[SENSORS_COUNT] = {};
-        std::optional<mcp4725::dac*> dac = std::nullopt;
-        std::optional<TaskHandle_t> dac_task = std::nullopt;
-
-        init_distance_sensors(i2c_bus_0, sensor_addresses, SENSORS_COUNT, sensors_tasks);
-        init_dac(i2c_bus_1, mcp4725::dac::I2C_ADDR_DFT, &dac, &dac_task);
+        const auto setup_data = do_setup();
 
         while (true)
         {
-            for (auto i = 0; i < SENSORS_COUNT; i++)
-            {
-                if (const auto maybe_sensor = sensors_tasks[i];
-                    maybe_sensor.has_value())
-                {
-                    const auto sensor = maybe_sensor->first;
-                    const auto sensor_task = maybe_sensor->second;
-
-                    if (i > 0 && (i % 100) == 0)
-                    {
-                        logi(NAMEOF(app_main),
-                            std::format("uxTaskGetStackHighWaterMark {}: {}",
-                                i,
-                                uxTaskGetStackHighWaterMark(sensor_task)));
-                    }
-
-                    uint8_t distance = sensor->get_distance();
-                    gpio_set_level(PIN_LED_BUILTIN, DIGITAL(distance < 64));
-                    logi(NAMEOF(app_main), std::format("Current distance: {}", distance));
-                }
-                else
-                {
-                    logw(NAMEOF(app_main),
-                        std::format("No sensor {}", i));
-                }
-            }
-
             vTaskDelay(100 / portTICK_PERIOD_US);
         }
     }

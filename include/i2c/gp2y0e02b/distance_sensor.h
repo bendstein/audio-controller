@@ -87,6 +87,18 @@ namespace gp2y0e02b
          */
         [[nodiscard]] shift_bit get_distance_shift() const { return state.distance_shift; }
 
+        [[nodiscard]] uint8_t get_distance_shift_value() const
+        {
+            switch (get_distance_shift())
+            {
+                case shift_bit::cm_128:
+                    return SHIFT_BIT_DISTANCE_128;
+                case shift_bit::cm_64:
+                default:
+                    return SHIFT_BIT_DISTANCE_64;
+            }
+        }
+
         /**
          * @return Whether the sensor is alive
          */

@@ -10,12 +10,10 @@
 
 #include "i2c/i2c.h"
 #include "app_common.h"
-#include "notes.h"
+#include "../audio/notes.h"
 
 namespace mcp4725
 {
-    typedef double (*wave_provider)(long long time_us, const tone tones[], size_t tones_length);
-
     enum struct command_type : uint8_t
     {
         fast_mode = 0,
@@ -118,112 +116,6 @@ namespace mcp4725
         }
     };
 
-    namespace wave_providers {
-        inline double sin_wave(const long long time_us, const tone tones[], const size_t tones_length) {
-            double sum = 0;
-            size_t tones_used = 0;
-
-            //Sum up component sine waves at this time
-            for(auto i = 0; i < tones_length; i++) {
-                //Skip frequencies of 0
-                if(const auto frequency = tones[i].frequency_megahz(); frequency > 0) {
-                    //Put time_us within period to handle long long.
-                    //Can narrow type to double since frequency is a double, and result of
-                    //modulus should never exceed it.
-                    const auto period = 1 / frequency;
-                    const auto time_us_adj = static_cast<double>(std::fmodl(time_us, period));
-
-                    // logi(NAMEOF(sin_wave), std::format("{} -> {} / {}MHz", time_us, time_us_adj, frequency));
-
-                    //Sine wave at this frequency, transformed from y=[-1,1] to y=[0,1]
-                    const auto component = (1 + sin(2 * M_PI * frequency * time_us_adj)) / 2.;
-                    sum += component;
-                    tones_used++;
-                }
-            }
-
-            //Normalize amplitude based on number of frequencies in chord so that range is [0,1]
-            return tones_used == 0? 0 : sum / tones_used;
-        }
-
-        inline double square_wave(const long long time_us, const tone tones[], const size_t tones_length) {
-            double sum = 0;
-            size_t tones_used = 0;
-
-            //Sum up component square waves at this time
-            for(auto i = 0; i < tones_length; i++) {
-                //Skip frequencies of 0
-                if(const auto frequency = tones[i].frequency_megahz(); frequency > 0) {
-                    //Put time_us within period to handle long long.
-                    //Can narrow type to double since frequency is a double, and result of
-                    //modulus should never exceed it.
-                    const auto period = 1 / frequency;
-                    const auto time_us_adj = static_cast<double>(std::fmodl(time_us, period));
-
-                    //Sine wave at this frequency, transformed st y > 0 => 1, else 0
-                    const auto component = sin(2 * M_PI * frequency * time_us_adj) > 0? 1 : 0;
-                    sum += component;
-                    tones_used++;
-                }
-            }
-
-            //Normalize amplitude based on number of frequencies in chord so that range is [0,1]
-            return tones_used == 0? 0 : sum / tones_used;
-        }
-
-        inline double sawtooth_wave(const long long time_us, const tone tones[], const size_t tones_length) {
-            double sum = 0;
-            size_t tones_used = 0;
-
-            //Sum up component square waves at this time
-            for(auto i = 0; i < tones_length; i++) {
-                //Skip frequencies of 0
-                if(const auto frequency = tones[i].frequency_megahz(); frequency > 0) {
-                    //Put time_us within period to handle long long.
-                    //Can narrow type to double since frequency is a double, and result of
-                    //modulus should never exceed it.
-                    const auto period = 1 / frequency;
-                    const auto time_us_adj = static_cast<double>(std::fmodl(time_us, period));
-
-                    //Ratio of current time to period
-                    const auto component = time_us_adj * frequency;
-
-                    sum += component;
-                    tones_used++;
-                }
-            }
-
-            //Normalize amplitude based on number of frequencies in chord so that range is [0,1]
-            return tones_used == 0? 0 : sum / tones_used;
-        }
-
-        inline double triangle_wave(const long long time_us, const tone tones[], const size_t tones_length) {
-            double sum = 0;
-            size_t tones_used = 0;
-
-            //Sum up component square waves at this time
-            for(auto i = 0; i < tones_length; i++) {
-                //Skip frequencies of 0
-                if(const auto frequency = tones[i].frequency_megahz(); frequency > 0) {
-                    //Put time_us within period to handle long long.
-                    //Can narrow type to double since frequency is a double, and result of
-                    //modulus should never exceed it.
-                    const auto period = 1 / frequency;
-                    const auto time_us_adj = static_cast<double>(std::fmodl(time_us, period));
-
-                    //Ratio of current time to half of period. Invert when past peak
-                    const auto component_0 = time_us_adj * frequency * 2;
-                    const auto component = component_0 > 1? (1 - (component_0 - 1)) : component_0;
-
-                    sum += component;
-                    tones_used++;
-                }
-            }
-
-            //Normalize amplitude based on number of frequencies in chord so that range is [0,1]
-            return tones_used == 0? 0 : sum / tones_used;
-        }
-    }
 }
 
 #endif //AUDIO_CONTROLLER_MCP4725_H
