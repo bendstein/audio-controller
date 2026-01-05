@@ -6,8 +6,9 @@
 #define AUDIO_CONTROLLER_GP2Y0E02B_H
 #include <optional>
 #include <stdexcept>
-
+#include <format>
 #include <driver/i2c_master.h>
+
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
 #include "freertos/FreeRTOSConfig.h"
@@ -44,21 +45,30 @@ namespace gp2y0e02b
         int32_t timeout_ms = -1;
         distance_sensor_state state {};
         uint8_t address;
+        std::string log_key;
 
         [[nodiscard]] bool try_select_register(register_map_tag tag) const;
 
+        [[nodiscard]] std::string make_log_key() const
+        {
+            return std::format("[distance sensor 0x{:02X}; 0x{:08X}]",
+                address,
+                reinterpret_cast<uintptr_t>(handle));
+        }
     public:
         distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address)
             : handle(device_handle), address(address)
         {
             assert(device_handle != nullptr);
             state.reset();
+            log_key = make_log_key();
         }
 
         distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address, const int32_t timeout)
             : distance_sensor(device_handle, address)
         {
             timeout_ms = timeout;
+            log_key = make_log_key();
         }
 
         [[nodiscard]] int32_t get_timeout_ms() const { return timeout_ms; }
@@ -66,12 +76,7 @@ namespace gp2y0e02b
 
         [[nodiscard]] i2c_master_dev_handle_t get_handle() const { return handle; }
 
-        [[nodiscard]] std::string get_log_key() const
-        {
-            return std::format("[distance sensor 0x{:02X}; 0x{:08X}]",
-                address,
-                reinterpret_cast<uintptr_t>(handle));
-        }
+        [[nodiscard]] const std::string& get_log_key() const { return log_key; }
 
         /**
          * @return Current state of this value
@@ -169,7 +174,7 @@ namespace gp2y0e02b
          * @return The created distance sensor, or none if failed
          * @remark Adds a new device to the master bus
          */
-        [[nodiscard]] static std::optional<distance_sensor*> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
+        [[nodiscard]] static std::optional<distance_sensor> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
         {
             const i2c_device_config_t device_cfg = {
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -186,7 +191,7 @@ namespace gp2y0e02b
             if (const auto add_to_bus_result = i2c_master_bus_add_device(bus, &device_cfg, &handle); add_to_bus_result != ESP_OK)
                 return std::nullopt;
 
-            return new distance_sensor(handle, addr, timeout_ms);
+            return distance_sensor(handle, addr, timeout_ms);
         }
 
         ~distance_sensor()
@@ -218,7 +223,7 @@ namespace gp2y0e02b
             if (!maybe_sensor.has_value())
                 throw std::runtime_error("Failed to create sensor");
 
-            const auto sensor = *maybe_sensor;
+            const auto& sensor = *maybe_sensor;
 
             logi(NAMEOF(gp2y0e02b), std::format("Programming sensor e-fuses to use address 0x{:02X}.", addr_new));
 
@@ -239,7 +244,7 @@ namespace gp2y0e02b
                 }
             };
 
-            if (!sensor->try_write_to_register(&clock_select_entry))
+            if (!sensor.try_write_to_register(&clock_select_entry))
                 throw std::runtime_error("Failed to write clock select");
 
             //Enable Vpp
@@ -263,7 +268,7 @@ namespace gp2y0e02b
                 }
             };
 
-            if (!sensor->try_write_to_register(&efuse_target_entry))
+            if (!sensor.try_write_to_register(&efuse_target_entry))
                 throw std::runtime_error("Failed to select target e-fuse");
 
             //Stage 3
@@ -285,7 +290,7 @@ namespace gp2y0e02b
                 }
             };
 
-            if (!sensor->try_write_to_register(&bank_target_entry))
+            if (!sensor.try_write_to_register(&bank_target_entry))
                 throw std::runtime_error("Failed to select target e-fuse bank");
 
             //Stage 4
@@ -301,7 +306,7 @@ namespace gp2y0e02b
                 }
             };
 
-            if (!sensor->try_write_to_register(&set_new_address_entry))
+            if (!sensor.try_write_to_register(&set_new_address_entry))
                 throw std::runtime_error("Failed to set new address in e-fuse program register");
 
             //Stage 5
@@ -317,7 +322,7 @@ namespace gp2y0e02b
                 }
             };
 
-            if (!sensor->try_write_to_register(&start_program_entry))
+            if (!sensor.try_write_to_register(&start_program_entry))
                 throw std::runtime_error("Failed to enable/start e-fuse program");
 
             vTaskDelay(500 / portTICK_PERIOD_US); //Delay 500 microseconds while writing program
@@ -334,7 +339,7 @@ namespace gp2y0e02b
                 }
             };
 
-            if (!sensor->try_write_to_register(&end_program_entry))
+            if (!sensor.try_write_to_register(&end_program_entry))
                 throw std::runtime_error("Failed to disable/end e-fuse program");
 
             logi(NAMEOF(gp2y0e02b), "Step 6.1: Finished applying e-fuse program. Bringing Vpp back to low.");
@@ -356,7 +361,7 @@ namespace gp2y0e02b
                 }
             };
 
-            if (!sensor->try_write_to_register(&select_control_register_entry))
+            if (!sensor.try_write_to_register(&select_control_register_entry))
                 throw std::runtime_error("Failed to select control register");
 
             //Update register values from e-fuses
@@ -372,7 +377,7 @@ namespace gp2y0e02b
                 }
             };
 
-            if (!sensor->try_write_to_register(&enable_update_register_entry))
+            if (!sensor.try_write_to_register(&enable_update_register_entry))
                 throw std::runtime_error("Failed to update register data from e-fuses");
 
             //Stop updating register values from e-fuses
@@ -388,7 +393,7 @@ namespace gp2y0e02b
                 }
             };
 
-            if (!sensor->try_write_to_register(&disable_update_register_entry))
+            if (!sensor.try_write_to_register(&disable_update_register_entry))
                 throw std::runtime_error("Failed to stop updating register data from e-fuses");
 
             //Stage 8
@@ -406,7 +411,7 @@ namespace gp2y0e02b
                 }
             };
 
-            if (!sensor->try_write_to_register(&reset_software_entry))
+            if (!sensor.try_write_to_register(&reset_software_entry))
                 throw std::runtime_error("Failed to restart sensor");
 
             //Stages 9, 10 are validation and error-handling.

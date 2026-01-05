@@ -5,18 +5,22 @@
 #ifndef AUDIO_CONTROLLER_COMMON_H
 #define AUDIO_CONTROLLER_COMMON_H
 
-#include "driver/gpio.h"
 #include <esp_log.h>
-#include <format>
 #include <string>
+#include <ctime>
+#include "driver/gpio.h"
 
-#define PIN_LED_BUILTIN gpio_num_t::GPIO_NUM_13 //Built-in LED
-#define portTICK_PERIOD_US ((TickType_t)1000 / portTICK_PERIOD_MS)
+#define LOG_VERBOSE //If present, enable VERBOSE log macro
 
-#define LOW 0
-#define HIGH 1
-#define DAC_MAX 255
-#define FREQ_MIN_HZ 1
+constexpr auto US_PER_MS = 1000;
+constexpr auto MS_PER_SECOND = 1000;
+constexpr auto US_PER_SECOND = 1000000;
+constexpr auto PIN_LED_BUILTIN = GPIO_NUM_13;
+constexpr uint8_t LOW = 0;
+constexpr uint8_t HIGH = 0;
+
+//Doesn't need to be a macro, but I'm doing it to match portTICK_PERIOD_MS being a macro
+#define portTICK_PERIOD_US ((TickType_t)US_PER_MS / portTICK_PERIOD_MS)
 
 //Change parameter into HIGH or LOW for digital write
 #define DIGITAL(boolean_value) boolean_value ? HIGH : LOW
@@ -63,7 +67,6 @@ uint8_t get_max_set_bit(TNumber value)
 
 inline long long total_microseconds(const timeval* time)
 {
-    constexpr auto US_PER_SECOND = 1000000;
     return time->tv_usec
         + time->tv_sec * US_PER_SECOND;
 }
@@ -124,24 +127,28 @@ inline void logi(const std::string& tag, const std::string& message)
 {
     log_message(tag, message, ESP_LOG_INFO);
 }
-
 inline void logd(const std::string& tag, const std::string& message)
 {
     log_message(tag, message, ESP_LOG_DEBUG);
 }
-
 inline void logw(const std::string& tag, const std::string& message)
 {
     log_message(tag, message, ESP_LOG_WARN);
 }
-
 inline void loge(const std::string& tag, const std::string& message)
 {
     log_message(tag, message, ESP_LOG_ERROR);
 }
-
 inline void log(const std::string& tag, const std::string& message)
 {
     logi(tag, message);
 }
+
+//Only verbose log if enabled
+#ifdef LOG_VERBOSE
+#define VERBOSE(tag, message) do { logv(tag, message); } while(0)
+#else
+#define VERBOSE(tag, message) {}
+#endif
+
 #endif //AUDIO_CONTROLLER_COMMON_H

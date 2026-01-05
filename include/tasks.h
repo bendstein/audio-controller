@@ -5,20 +5,22 @@
 #ifndef AUDIO_CONTROLLER_TASKS_H
 #define AUDIO_CONTROLLER_TASKS_H
 #include "setup.h"
-#include "i2c/mcp4725.h"
-#include "audio/musical_distance_sensor.h"
-#include "audio/wave_provider.h"
 
-struct dac_task_param {
-    const mcp4725::dac* dac;
-    const wave_provider* wave;
-    std::optional<musical_distance_sensor*> musical_distance_sensors[SENSORS_COUNT];
+struct sensor_task_param
+{
+    app_state* state;
+    size_t index;
+};
+
+struct dac_task_param
+{
+    app_state* state;
 };
 
 [[noreturn]]
-void distance_sensor_task(void* sensor_pointer);
+void distance_sensor_task(void* task_param_pointer);
 
 [[noreturn]]
-void dac_task(void* dac_pointer);
+void dac_task(void* task_param_pointer);
 
 #endif //AUDIO_CONTROLLER_TASKS_H

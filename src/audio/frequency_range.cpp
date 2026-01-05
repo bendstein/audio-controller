@@ -1,33 +1,33 @@
-#include "audio/frequency_range.h"
 //
 // Created by bendstein on 1/2/2026.
 //
+#include "audio/frequency_range.h"
 
-std::optional<const tone*> continuous_frequency_range::get_tone(const double value) const
+float continuous_frequency_range::get_tone(const float value) const
 {
     if (min == nullptr || max == nullptr) //Invalid range/fn
-        return std::nullopt;
+        return 0;
 
-    const auto min_freq = min->frequency_hz();
-    const auto max_freq = max->frequency_hz();
+    const auto min_freq = min->frequency_megahz();
+    const auto max_freq = max->frequency_megahz();
 
     if (min_freq == max_freq) //Single frequency
-        return min;
+        return min_freq;
 
-    //Clamp value to [0, 1]
+    //Clamp value to range
     if (value <= 0)
-        return min;
+        return min_freq;
     if (value >= 1)
-        return max;
+        return max_freq;
 
-    return new tone(map_to_range(value));
+    return map_to_range(value);
 }
 
-std::optional<const tone*> piecewise_frequency_range::get_tone(const double value) const
+float piecewise_frequency_range_breakpoint::get_tone(const piecewise_frequency_range_breakpoint breakpoints[], const size_t breakpoints_len, const float value)
 {
     if (breakpoints_len > 0 && breakpoints != nullptr)
     {
-        double previous_breakpoint = 0;
+        float previous_breakpoint = 0;
 
         for (auto i = 0; i < breakpoints_len; i++)
         {
@@ -41,12 +41,12 @@ std::optional<const tone*> piecewise_frequency_range::get_tone(const double valu
                 //Adj value to be ratio between previous and current breakpoint so
                 //that the child function uses its full range
                 const auto adj_value = (value - previous_breakpoint) / (breakpoint - previous_breakpoint);
-                return child_range == nullptr? std::nullopt : child_range->get_tone(adj_value);
+                return child_range == nullptr? 0 : child_range->get_tone(adj_value);
             }
 
             previous_breakpoint = breakpoint;
         }
     }
 
-    return std::nullopt; //Invalid set of breakpoints
+    return 0; //Invalid set of breakpoints
 }

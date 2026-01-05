@@ -5,11 +5,11 @@
 #ifndef AUDIO_CONTROLLER_MCP4725_H
 #define AUDIO_CONTROLLER_MCP4725_H
 
+#include <format>
 #include <driver/i2c_master.h>
 #include <driver/i2c_types.h>
 
 #include "i2c/i2c.h"
-#include "app_common.h"
 #include "../audio/notes.h"
 
 namespace mcp4725
@@ -49,17 +49,27 @@ namespace mcp4725
         i2c_master_dev_handle_t handle;
         int32_t timeout_ms = -1;
         uint8_t address;
+        std::string log_key;
+
+        [[nodiscard]] std::string make_log_key() const
+        {
+            return std::format("[DAC 0x{:02X}; 0x{:08X}]",
+                address,
+                reinterpret_cast<uintptr_t>(handle));
+        }
     public:
         dac(i2c_master_dev_handle_t device_handle, const uint8_t address)
             : handle(device_handle), address(address)
         {
             assert(device_handle != nullptr);
+            log_key = make_log_key();
         }
 
         dac(i2c_master_dev_handle_t device_handle, const uint8_t address, const int32_t timeout)
             : dac(device_handle, address)
         {
             timeout_ms = timeout;
+            log_key = make_log_key();
         }
 
         [[nodiscard]] int32_t get_timeout_ms() const { return timeout_ms; }
@@ -67,12 +77,7 @@ namespace mcp4725
 
         [[nodiscard]] i2c_master_dev_handle_t get_handle() const { return handle; }
 
-        [[nodiscard]] std::string get_log_key() const
-        {
-            return std::format("[DAC 0x{:02X}; 0x{:08X}]",
-                address,
-                reinterpret_cast<uintptr_t>(handle));
-        }
+        [[nodiscard]] const std::string& get_log_key() const { return log_key; }
 
         /**
          * @return Whether the dac is alive
@@ -94,7 +99,7 @@ namespace mcp4725
             i2c_master_bus_rm_device(handle);
         }
 
-        [[nodiscard]] static std::optional<dac*> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
+        [[nodiscard]] static std::optional<dac> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
         {
             const i2c_device_config_t device_cfg = {
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -112,7 +117,7 @@ namespace mcp4725
             if (const auto add_to_bus_result = i2c_master_bus_add_device(bus, &device_cfg, &handle); add_to_bus_result != ESP_OK)
                 return std::nullopt;
 
-            return new dac(handle, addr, timeout_ms);
+            return dac(handle, addr, timeout_ms);
         }
     };
 

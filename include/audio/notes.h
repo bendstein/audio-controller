@@ -7,7 +7,9 @@
 
 #include <cmath>
 
-#define FREQUENCY_C0 16.35 //Frequency, in hz, for C in octave 0
+#include "app_common.h"
+
+constexpr float FREQUENCY_C0 = 16.35f; //Frequency, in hz, for C in octave 0
 
 /**
  * Enum of all notes in the chromatic scale
@@ -39,9 +41,9 @@ enum struct musical_note : uint8_t
  *  e.g. Tuning::Equal, Tuning::Just?
  */
 [[nodiscard]]
-constexpr double musical_note_freq_hz(const musical_note note, const uint8_t octave)
+constexpr float musical_note_freq_hz(const musical_note note, const uint8_t octave)
 {
-    return FREQUENCY_C0 * std::pow(2, (static_cast<uint8_t>(note) + (octave * static_cast<uint8_t>(musical_note::MAX))) / (static_cast<uint8_t>(musical_note::MAX) * 1.));
+    return FREQUENCY_C0 * std::powf(2, static_cast<float>(static_cast<uint8_t>(note) + (octave * static_cast<uint8_t>(musical_note::MAX))) / (static_cast<uint8_t>(musical_note::MAX) * 1.f));
 }
 
 enum struct tone_type : uint8_t {
@@ -49,30 +51,40 @@ enum struct tone_type : uint8_t {
     frequency
 };
 
+struct octave_note
+{
+    musical_note name;
+    uint8_t octave;
+};
+
+union tone_value
+{
+    float frequency_hz;
+    octave_note note;
+
+    tone_value() : frequency_hz(0) {}
+    explicit tone_value(const float frequency_hz) : frequency_hz(frequency_hz) {}
+    explicit tone_value(const octave_note note) : note(note) {}
+    tone_value(const musical_note note_value, const uint8_t octave) : note(note_value, octave) {}
+};
+
 struct tone {
     tone_type type;
-    union tone_value {
-        tone_value() : frequency_hz(0) {}
-        explicit tone_value(const double frequency_hz)
-            : frequency_hz(frequency_hz) {}
-        tone_value(const musical_note note_value, const uint8_t octave)
-            : note({.name = note_value, .octave = octave}) {}
-
-        double frequency_hz;
-        struct note {
-            musical_note name;
-            uint8_t octave;
-        } note;
-    } value;
+    tone_value value;
 
     tone() : type(tone_type::frequency) {}
+    tone(const tone& other)
+    {
+        type = other.type;
+        value = tone_value(other.value);
+    }
 
-    explicit tone(const double frequency_hz) : type(tone_type::frequency), value(frequency_hz) { }
-
+    explicit tone(const float frequency_hz) : type(tone_type::frequency), value(frequency_hz) { }
+    explicit tone(const octave_note note) : type(tone_type::note), value(note) { }
     tone(const musical_note note, const uint8_t octave) : type(tone_type::note), value(note, octave) { }
 
     [[nodiscard]]
-    double frequency_hz() const {
+    float frequency_hz() const {
         switch(type) {
             case tone_type::note:
                 return musical_note_freq_hz(value.note.name, value.note.octave);
@@ -84,9 +96,17 @@ struct tone {
     }
 
     [[nodiscard]]
-    double frequency_megahz() const {
-        constexpr auto US_PER_SECOND = 1000000;
+    float frequency_megahz() const {
         return frequency_hz() / US_PER_SECOND;
+    }
+
+    /**
+     * @return Const reference to a default tone w/ frequency 0hz
+     * @remark rv is to a static to prevent allocation each time
+     */
+    static const tone* dft() {
+        static auto default_tone = tone();
+        return &default_tone;
     }
 };
 

@@ -10,15 +10,20 @@
 
 bool gp2y0e02b::distance_sensor::ping() const
 {
+    VERBOSE(get_log_key(), "Ping");
+
     register_map_entry active_standby_entry = {
         .tag = register_map_tag::ACTIVE_STAND_BY_STATE_CONTROL,
         .data = {}
     };
+
     return try_read_from_register(&active_standby_entry);
 }
 
 bool gp2y0e02b::distance_sensor::try_update_distance_shift(shift_bit* distance_shift_out, shift_bit* prev_distance_shift_out)
 {
+    VERBOSE(get_log_key(), "Update distance shift");
+
     if (prev_distance_shift_out != nullptr) //Output prev value
         *prev_distance_shift_out = get_distance_shift();
 
@@ -41,6 +46,8 @@ bool gp2y0e02b::distance_sensor::try_update_distance_shift(shift_bit* distance_s
 
 bool gp2y0e02b::distance_sensor::try_update_distance(uint8_t* distance_out, uint8_t* prev_distance_out)
 {
+    VERBOSE(get_log_key(), "Update distance");
+
     //TODO: Signal accumulation, Median filter both have an effect on the delay between setting the
     //register and reading it.
 
@@ -111,11 +118,15 @@ bool gp2y0e02b::distance_sensor::try_update_distance(uint8_t* distance_out, uint
     if (distance_out != nullptr) //Output new value
         *distance_out = distance;
 
+    VERBOSE(get_log_key(), std::format("New distance: {}cm", distance));
+
     return true;
 }
 
 bool gp2y0e02b::distance_sensor::try_apply_distance_shift(const shift_bit new_shift_bit, shift_bit* prev_distance_shift_out)
 {
+    VERBOSE(get_log_key(), "Apply distance shift");
+
     if (prev_distance_shift_out != nullptr) //Output prev value
         *prev_distance_shift_out = get_distance_shift();
 
@@ -138,6 +149,8 @@ bool gp2y0e02b::distance_sensor::try_apply_distance_shift(const shift_bit new_sh
 
 bool gp2y0e02b::distance_sensor::try_soft_reset()
 {
+    VERBOSE(get_log_key(), "Soft reset");
+
     //Set clock to manual
     constexpr register_map_entry clock_manual_entry = {
         .tag = register_map_tag::CLOCK_SELECT,
@@ -193,12 +206,18 @@ bool gp2y0e02b::distance_sensor::try_soft_reset()
 
 bool gp2y0e02b::distance_sensor::try_select_register(register_map_tag tag) const
 {
+    VERBOSE(get_log_key(), std::format("Select register {}", static_cast<uint8_t>(tag)));
+
     const auto target_register = static_cast<uint8_t>(tag);
     const auto result_select_register = i2c_master_transmit(
         handle,
         &target_register, 1,
         timeout_ms
     );
+
+    VERBOSE(get_log_key(), std::format("Select register {} result: {}",
+        static_cast<uint8_t>(tag),
+        result_select_register));
 
     return result_select_register == ESP_OK;
 }
@@ -207,12 +226,16 @@ bool gp2y0e02b::distance_sensor::try_read_from_register(register_map_entry* entr
 {
     uint8_t buffer_read = 0;
 
+    VERBOSE(get_log_key(), std::format("Read from register {}", entry->get_register_address()));
+
     //Select register
     if (!try_select_register(entry->tag))
         return false;
 
     //Data hold/setup time
     vTaskDelay(1 / portTICK_PERIOD_US);
+
+    VERBOSE(get_log_key(), "Send read request.");
 
     //Read from selected register
     const auto result_read_register = i2c_master_receive(
@@ -221,10 +244,14 @@ bool gp2y0e02b::distance_sensor::try_read_from_register(register_map_entry* entr
         timeout_ms
     );
 
+    VERBOSE(get_log_key(), std::format("Read result: {}", result_read_register));
+
     if (result_read_register != ESP_OK)
         return false;
 
     entry->data.raw_value = buffer_read;
+
+    VERBOSE(get_log_key(), std::format("Read value: {}", entry->data.raw_value));
 
     return true;
 }
@@ -251,6 +278,10 @@ bool gp2y0e02b::distance_sensor::try_burst_read_from_register(register_map_entry
         prev_address = current_addr;
     }
 
+    VERBOSE(get_log_key(), std::format("Burst read {} registers, starting at address {}",
+        read_len,
+        entries[0].get_register_address()));
+
     //Select register
     if (!try_select_register(entries[0].tag))
         return false;
@@ -261,6 +292,8 @@ bool gp2y0e02b::distance_sensor::try_burst_read_from_register(register_map_entry
     //alloc read buffer that will be freed at end of scope
     const auto buffer_read = std::make_unique<uint8_t[]>(read_len);
 
+    VERBOSE(get_log_key(), "Send burst read request.");
+
     //Read starting from selected register
     const auto result_read_register = i2c_master_receive(
         handle,
@@ -268,12 +301,15 @@ bool gp2y0e02b::distance_sensor::try_burst_read_from_register(register_map_entry
         timeout_ms
     );
 
+    VERBOSE(get_log_key(), std::format("Burst read result: {}", result_read_register));
+
     if (result_read_register != ESP_OK)
         return false;
 
     //Populate results
     for (size_t i = 0; i < read_len; i++)
     {
+        VERBOSE(get_log_key(), std::format("Burst read result {}: {}", i, buffer_read[i]));
         entries[i].data.raw_value = buffer_read[i];
     }
 
@@ -282,6 +318,8 @@ bool gp2y0e02b::distance_sensor::try_burst_read_from_register(register_map_entry
 
 bool gp2y0e02b::distance_sensor::try_write_to_register(const register_map_entry* entry) const
 {
+    VERBOSE(get_log_key(), std::format("Write to register {}", entry->get_register_address()));
+
     //Select register
     if (!try_select_register(entry->tag))
         return false;
@@ -289,12 +327,14 @@ bool gp2y0e02b::distance_sensor::try_write_to_register(const register_map_entry*
     //Data hold/setup time
     vTaskDelay(1 / portTICK_PERIOD_US);
 
+    VERBOSE(get_log_key(), std::format("Send write request with data: {}", entry->data.raw_value));
+
     //Write to selected register
-    const auto result_read_register = i2c_master_transmit(
+    const auto result_write_register = i2c_master_transmit(
         handle,
         &entry->data.raw_value, 1,
         timeout_ms
     );
 
-    return result_read_register == ESP_OK;
+    return result_write_register == ESP_OK;
 }

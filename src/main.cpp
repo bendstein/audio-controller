@@ -1,7 +1,6 @@
 #include "app_common.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 #include "setup.h"
-#include "tasks.h"
 
 #include "driver/gpio.h"
 #include "freertos/FreeRTOS.h"

@@ -3,21 +3,23 @@
 //
 #include "audio/wave_provider.h"
 
-double wave_provider::wave(const long long time_us, const tone* tones[], const size_t tones_length) const { return 0; }
+#include <cmath>
 
-double sin_wave_provider::wave(const long long time_us, const tone* tones[], size_t const tones_length) const {
-    double sum = 0;
+float wave_provider::wave(const long long time_us, const float tones[], const size_t tones_length) const { return 0; }
+
+float sin_wave_provider::wave(const long long time_us, const float tones[], size_t const tones_length) const {
+    float sum = 0;
     size_t tones_used = 0;
 
     //Sum up component sine waves at this time
     for(auto i = 0; i < tones_length; i++) {
         //Skip frequencies of 0
-        if(const auto frequency = tones[i]->frequency_megahz(); frequency > 0) {
+        if(const auto frequency = tones[i]; frequency > 0) {
             //Put time_us within period to handle long long.
-            //Can narrow type to double since frequency is a double, and result of
+            //Can narrow type to float since frequency is a float, and result of
             //modulus should never exceed it.
             const auto period = 1 / frequency;
-            const auto time_us_adj = static_cast<double>(std::fmodl(time_us, period));
+            const auto time_us_adj = static_cast<float>(std::fmodl(time_us, period));
 
             // logi(NAMEOF(sin_wave), std::format("{} -> {} / {}MHz", time_us, time_us_adj, frequency));
 
@@ -32,18 +34,18 @@ double sin_wave_provider::wave(const long long time_us, const tone* tones[], siz
     return tones_used == 0? 0 : sum / tones_used;
 }
 
-double square_wave_provider::wave(const long long time_us, const tone* tones[], const size_t tones_length) const {
-    double sum = 0;
+float square_wave_provider::wave(const long long time_us, const float tones[], const size_t tones_length) const {
+    float sum = 0;
     size_t tones_used = 0;
 
     for(auto i = 0; i < tones_length; i++) {
         //Skip frequencies of 0
-        if(const auto frequency = tones[i]->frequency_megahz(); frequency > 0) {
+        if(const auto frequency = tones[i]; frequency > 0) {
             //Put time_us within period to handle long long.
-            //Can narrow type to double since frequency is a double, and result of
+            //Can narrow type to float since frequency is a float, and result of
             //modulus should never exceed it.
             const auto period = 1 / frequency;
-            const auto time_us_adj = static_cast<double>(std::fmodl(time_us, period));
+            const auto time_us_adj = static_cast<float>(std::fmodl(time_us, period));
 
             //If ratio into period is <= duty cycle, 1, else 0
             const auto component = time_us_adj * frequency <= duty_cycle? 1 : 0;
@@ -56,19 +58,19 @@ double square_wave_provider::wave(const long long time_us, const tone* tones[], 
     return tones_used == 0? 0 : sum / tones_used;
 }
 
-double sawtooth_wave_provider::wave(const long long time_us, const tone* tones[], const size_t tones_length) const {
-    double sum = 0;
+float sawtooth_wave_provider::wave(const long long time_us, const float tones[], const size_t tones_length) const {
+    float sum = 0;
     size_t tones_used = 0;
 
     //Sum up component square waves at this time
     for(auto i = 0; i < tones_length; i++) {
         //Skip frequencies of 0
-        if(const auto frequency = tones[i]->frequency_megahz(); frequency > 0) {
+        if(const auto frequency = tones[i]; frequency > 0) {
             //Put time_us within period to handle long long.
-            //Can narrow type to double since frequency is a double, and result of
+            //Can narrow type to float since frequency is a float, and result of
             //modulus should never exceed it.
             const auto period = 1 / frequency;
-            const auto time_us_adj = static_cast<double>(std::fmodl(time_us, period));
+            const auto time_us_adj = static_cast<float>(std::fmodl(time_us, period));
 
             //Ratio of current time to period (accounting for duty cycle).
             //If ratio is past duty cycle, 0.
@@ -86,19 +88,19 @@ double sawtooth_wave_provider::wave(const long long time_us, const tone* tones[]
     return tones_used == 0? 0 : sum / tones_used;
 }
 
-double triangle_wave_provider::wave(const long long time_us, const tone* tones[], const size_t tones_length) const {
-    double sum = 0;
+float triangle_wave_provider::wave(const long long time_us, const float tones[], const size_t tones_length) const {
+    float sum = 0;
     size_t tones_used = 0;
 
     //Sum up component square waves at this time
     for(auto i = 0; i < tones_length; i++) {
         //Skip frequencies of 0
-        if(const auto frequency = tones[i]->frequency_megahz(); frequency > 0) {
+        if(const auto frequency = tones[i]; frequency > 0) {
             //Put time_us within period to handle long long.
-            //Can narrow type to double since frequency is a double, and result of
+            //Can narrow type to float since frequency is a float, and result of
             //modulus should never exceed it.
             const auto period = 1 / frequency;
-            const auto time_us_adj = static_cast<double>(std::fmodl(time_us, period));
+            const auto time_us_adj = static_cast<float>(std::fmodl(time_us, period));
 
             //Ratio of current time to half of period (accounting for duty cycle). Invert when past peak
             //If ratio is past duty cycle, 0.
