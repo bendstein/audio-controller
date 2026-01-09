@@ -24,18 +24,23 @@ float sin_wave_provider::wave(const long long time_us, const float tones[], size
             // logi(NAMEOF(sin_wave), std::format("{} -> {} / {}MHz", time_us, time_us_adj, frequency));
 
             //Sine wave at this frequency, transformed from y=[-1,1] to y=[0,1]
-            const auto component = (1 + sin(2 * M_PI * frequency * time_us_adj)) / 2.;
+            const auto component = (1 + sinf(2 * static_cast<float>(M_PI) * frequency * time_us_adj)) / 2.f;
             sum += component;
             tones_used++;
         }
     }
 
     //Normalize amplitude based on number of frequencies in chord so that range is [0,1]
-    return tones_used == 0? 0 : sum / tones_used;
+    //If for some insane reason tones_used exceeds max float, just return 0 so there's not a problem
+    //when casting to float below
+    if (tones_used == 0 || tones_used > static_cast<double>(std::numeric_limits<float>::max()))
+        return 0;
+
+    return sum / static_cast<float>(tones_used);
 }
 
 float square_wave_provider::wave(const long long time_us, const float tones[], const size_t tones_length) const {
-    float sum = 0;
+    unsigned sum = 0;
     size_t tones_used = 0;
 
     for(auto i = 0; i < tones_length; i++) {
@@ -55,7 +60,16 @@ float square_wave_provider::wave(const long long time_us, const float tones[], c
     }
 
     //Normalize amplitude based on number of frequencies in chord so that range is [0,1]
-    return tones_used == 0? 0 : sum / tones_used;
+    if (tones_used == 0)
+        return 0;
+
+    //If result exceeds max float, clamp to 1 (this should never happen)
+    const auto result = (sum * 1.) / tones_used;
+
+    if (result > static_cast<double>(std::numeric_limits<float>::max()))
+        return 1;
+
+    return static_cast<float>(result);
 }
 
 float sawtooth_wave_provider::wave(const long long time_us, const float tones[], const size_t tones_length) const {
@@ -85,7 +99,12 @@ float sawtooth_wave_provider::wave(const long long time_us, const float tones[],
     }
 
     //Normalize amplitude based on number of frequencies in chord so that range is [0,1]
-    return tones_used == 0? 0 : sum / tones_used;
+    //If for some insane reason tones_used exceeds max float, just return 0 so there's not a problem
+    //when casting to float below
+    if (tones_used == 0 || tones_used > static_cast<double>(std::numeric_limits<float>::max()))
+        return 0;
+
+    return sum / static_cast<float>(tones_used);
 }
 
 float triangle_wave_provider::wave(const long long time_us, const float tones[], const size_t tones_length) const {
@@ -116,5 +135,10 @@ float triangle_wave_provider::wave(const long long time_us, const float tones[],
     }
 
     //Normalize amplitude based on number of frequencies in chord so that range is [0,1]
-    return tones_used == 0? 0 : sum / tones_used;
+    //If for some insane reason tones_used exceeds max float, just return 0 so there's not a problem
+    //when casting to float below
+    if (tones_used == 0 || tones_used > static_cast<double>(std::numeric_limits<float>::max()))
+        return 0;
+
+    return sum / static_cast<float>(tones_used);
 }

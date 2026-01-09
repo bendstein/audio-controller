@@ -206,135 +206,213 @@ bool gp2y0e02b::distance_sensor::try_soft_reset()
 
 bool gp2y0e02b::distance_sensor::try_select_register(register_map_tag tag) const
 {
-    VERBOSE(get_log_key(), std::format("Select register {}", static_cast<uint8_t>(tag)));
+    try
+    {
+        VERBOSE(get_log_key(), std::format("Select register 0x{:02X}", static_cast<uint8_t>(tag)));
 
-    const auto target_register = static_cast<uint8_t>(tag);
-    const auto result_select_register = i2c_master_transmit(
-        handle,
-        &target_register, 1,
-        timeout_ms
-    );
+        const auto target_register = static_cast<uint8_t>(tag);
+        const auto result_select_register = i2c_master_transmit(
+            handle,
+            &target_register, 1,
+            timeout_ms
+        );
 
-    VERBOSE(get_log_key(), std::format("Select register {} result: {}",
-        static_cast<uint8_t>(tag),
-        result_select_register));
+        VERBOSE(get_log_key(), std::format("Select register 0x{:02X} result: 0x{:04X}",
+            static_cast<uint8_t>(tag),
+            result_select_register));
 
-    return result_select_register == ESP_OK;
+        if (result_select_register != ESP_OK)
+        {
+            loge(get_log_key(), std::format("Failed to select register {}. [0x{:04X}] {}",
+                static_cast<uint8_t>(tag),
+                result_select_register,
+                esp_err_to_name(result_select_register)));
+        }
+
+        return result_select_register == ESP_OK;
+    }
+    catch (const std::exception& e)
+    {
+        loge(get_log_key(), std::format("An exception occurred while selecting register {}: {}",
+            static_cast<uint8_t>(tag),
+            e.what()));
+
+        return false;
+    }
 }
 
 bool gp2y0e02b::distance_sensor::try_read_from_register(register_map_entry* entry) const
 {
-    uint8_t buffer_read = 0;
+    try
+    {
+        uint8_t buffer_read = 0;
 
-    VERBOSE(get_log_key(), std::format("Read from register {}", entry->get_register_address()));
+        VERBOSE(get_log_key(), std::format("Read from register 0x{:02X}", entry->get_register_address()));
 
-    //Select register
-    if (!try_select_register(entry->tag))
+        //Select register
+        if (!try_select_register(entry->tag))
+            return false;
+
+        //Data hold/setup time
+        vTaskDelay(1 / portTICK_PERIOD_US);
+
+        VERBOSE(get_log_key(), "Send read request.");
+
+        //Read from selected register
+        const auto result_read_register = i2c_master_receive(
+            handle,
+            &buffer_read, 1,
+            timeout_ms
+        );
+
+        VERBOSE(get_log_key(), std::format("Read result: 0x{:04X}", result_read_register));
+
+        if (result_read_register != ESP_OK)
+        {
+            loge(get_log_key(), std::format("Failed to read from register 0x{:02X}. [0x{:04X}] {}",
+                entry->get_register_address(),
+                result_read_register,
+                esp_err_to_name(result_read_register)));
+
+            return false;
+        }
+
+        entry->data.raw_value = buffer_read;
+
+        VERBOSE(get_log_key(), std::format("Read value: 0x{:02X}", entry->data.raw_value));
+
+        return true;
+    }
+    catch (std::exception& e)
+    {
+        loge(get_log_key(), std::format("An exception occurred while reading from register 0x{:02X}: {}",
+            entry->get_register_address(),
+            e.what()));
+
         return false;
-
-    //Data hold/setup time
-    vTaskDelay(1 / portTICK_PERIOD_US);
-
-    VERBOSE(get_log_key(), "Send read request.");
-
-    //Read from selected register
-    const auto result_read_register = i2c_master_receive(
-        handle,
-        &buffer_read, 1,
-        timeout_ms
-    );
-
-    VERBOSE(get_log_key(), std::format("Read result: {}", result_read_register));
-
-    if (result_read_register != ESP_OK)
-        return false;
-
-    entry->data.raw_value = buffer_read;
-
-    VERBOSE(get_log_key(), std::format("Read value: {}", entry->data.raw_value));
-
-    return true;
+    }
 }
 
 bool gp2y0e02b::distance_sensor::try_burst_read_from_register(register_map_entry entries[], const size_t read_len) const
 {
-    assert(read_len > 0);
-
-    //If read length is 1, call standard read from register
-    if (read_len == 1)
+    try
     {
-        return try_read_from_register(&entries[0]);
-    }
+        assert(read_len > 0);
 
-    //Registers MUST be adjacent for burst read.
-    auto prev_address = 0;
-    for (size_t i = 0; i < read_len; i++)
+        //If read length is 1, call standard read from register
+        if (read_len == 1)
+        {
+            return try_read_from_register(&entries[0]);
+        }
+
+        //Registers MUST be adjacent for burst read.
+        auto prev_address = 0;
+        for (size_t i = 0; i < read_len; i++)
+        {
+            const auto current_addr = entries[i].get_register_address();
+
+            if (i > 0)
+                assert(current_addr == prev_address + 1);
+
+            prev_address = current_addr;
+        }
+
+        VERBOSE(get_log_key(), std::format("Burst read {} registers, starting at address 0x{:02X}.",
+            read_len,
+            entries[0].get_register_address()));
+
+        //Select register
+        if (!try_select_register(entries[0].tag))
+            return false;
+
+        //Data hold/setup time
+        vTaskDelay(1 / portTICK_PERIOD_US);
+
+        //alloc read buffer that will be freed at end of scope
+        const auto buffer_read = std::make_unique<uint8_t[]>(read_len);
+
+        VERBOSE(get_log_key(), "Send burst read request.");
+
+        //Read starting from selected register
+        const auto result_read_register = i2c_master_receive(
+            handle,
+            buffer_read.get(), read_len,
+            timeout_ms
+        );
+
+        VERBOSE(get_log_key(), std::format("Burst read result: 0x{:04X}", result_read_register));
+
+        if (result_read_register != ESP_OK)
+        {
+            loge(get_log_key(), std::format("Failed to burst read {} items starting from register 0x{:02X}. [0x{:04X}] {}",
+                read_len,
+                entries[0].get_register_address(),
+                result_read_register,
+                esp_err_to_name(result_read_register)));
+
+            return false;
+        }
+
+        //Populate results
+        for (size_t i = 0; i < read_len; i++)
+        {
+            VERBOSE(get_log_key(), std::format("Burst read result {}: 0x{:02X}", i, buffer_read[i]));
+            entries[i].data.raw_value = buffer_read[i];
+        }
+
+        return true;
+    }
+    catch (std::exception& e)
     {
-        const auto current_addr = entries[i].get_register_address();
+        loge(get_log_key(), std::format("An exception occurred while burst reading {} items starting from register 0x{:02X}: {}",
+            read_len,
+            read_len < 1? -1 : entries[0].get_register_address(),
+            e.what()));
 
-        if (i > 0)
-            assert(current_addr == prev_address + 1);
-
-        prev_address = current_addr;
-    }
-
-    VERBOSE(get_log_key(), std::format("Burst read {} registers, starting at address {}",
-        read_len,
-        entries[0].get_register_address()));
-
-    //Select register
-    if (!try_select_register(entries[0].tag))
         return false;
-
-    //Data hold/setup time
-    vTaskDelay(1 / portTICK_PERIOD_US);
-
-    //alloc read buffer that will be freed at end of scope
-    const auto buffer_read = std::make_unique<uint8_t[]>(read_len);
-
-    VERBOSE(get_log_key(), "Send burst read request.");
-
-    //Read starting from selected register
-    const auto result_read_register = i2c_master_receive(
-        handle,
-        buffer_read.get(), read_len,
-        timeout_ms
-    );
-
-    VERBOSE(get_log_key(), std::format("Burst read result: {}", result_read_register));
-
-    if (result_read_register != ESP_OK)
-        return false;
-
-    //Populate results
-    for (size_t i = 0; i < read_len; i++)
-    {
-        VERBOSE(get_log_key(), std::format("Burst read result {}: {}", i, buffer_read[i]));
-        entries[i].data.raw_value = buffer_read[i];
     }
-
-    return true;
 }
 
 bool gp2y0e02b::distance_sensor::try_write_to_register(const register_map_entry* entry) const
 {
-    VERBOSE(get_log_key(), std::format("Write to register {}", entry->get_register_address()));
+    try
+    {
+        VERBOSE(get_log_key(), std::format("Write to register 0x{:02X}", entry->get_register_address()));
 
-    //Select register
-    if (!try_select_register(entry->tag))
+        //Select register
+        if (!try_select_register(entry->tag))
+            return false;
+
+        //Data hold/setup time
+        vTaskDelay(1 / portTICK_PERIOD_US);
+
+        VERBOSE(get_log_key(), std::format("Send write request with data: 0x{:02X}", entry->data.raw_value));
+
+        //Write to selected register
+        const auto result_write_register = i2c_master_transmit(
+            handle,
+            &entry->data.raw_value, 1,
+            timeout_ms
+        );
+
+        if (result_write_register != ESP_OK)
+        {
+            loge(get_log_key(), std::format("Failed to write value 0x{:02X} to register 0x{:02X}. [0x{:04X}] {}",
+                entry->data.raw_value,
+                entry->get_register_address(),
+                result_write_register,
+                esp_err_to_name(result_write_register)));
+        }
+
+        return result_write_register == ESP_OK;
+    }
+    catch (std::exception& e)
+    {
+        loge(get_log_key(), std::format("An exception occurred while writing value 0x{:02X} to register 0x{:02X}: {}",
+            entry->data.raw_value,
+            entry->get_register_address(),
+            e.what()));
+
         return false;
-
-    //Data hold/setup time
-    vTaskDelay(1 / portTICK_PERIOD_US);
-
-    VERBOSE(get_log_key(), std::format("Send write request with data: {}", entry->data.raw_value));
-
-    //Write to selected register
-    const auto result_write_register = i2c_master_transmit(
-        handle,
-        &entry->data.raw_value, 1,
-        timeout_ms
-    );
-
-    return result_write_register == ESP_OK;
+    }
 }

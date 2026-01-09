@@ -14,10 +14,10 @@ static constexpr uint8_t SENSOR_ADDRESSES[SENSORS_COUNT] = {
 };
 static constexpr uint8_t DAC_ADDRESS = mcp4725::dac::I2C_ADDR_DFT;
 
-static constexpr auto DISTANCE_SENSOR_TASK_PRIORITY = 4;
-static constexpr auto DISTANCE_SENSOR_TASK_STACK_SIZE = 0x2000;
-static constexpr auto DAC_TASK_PRIORITY = 4;
-static constexpr auto DAC_TASK_STACK_SIZE = 0x1800;
+static constexpr auto DISTANCE_SENSOR_TASK_PRIORITY = 1;
+static constexpr auto DISTANCE_SENSOR_TASK_STACK_SIZE = 0x1000;
+static constexpr auto DAC_TASK_PRIORITY = 1;
+static constexpr auto DAC_TASK_STACK_SIZE = 0x1000;
 
 static constexpr float PIECEWISE_FREQUENCY_BREAKPOINTS[PIECEWISE_FREQUENCY_BREAKPOINT_COUNT] = {
     0.5,

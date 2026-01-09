@@ -5,12 +5,18 @@
 #ifndef AUDIO_CONTROLLER_COMMON_H
 #define AUDIO_CONTROLLER_COMMON_H
 
+#define LOG_LOCAL_LEVEL ESP_LOG_VERBOSE
+
 #include <esp_log.h>
 #include <string>
 #include <ctime>
 #include "driver/gpio.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
 
-#define LOG_VERBOSE //If present, enable VERBOSE log macro
+#define LOG_VERBOSE //If present, enable VERBOSE log macros
+#define LOG_VERBOSE_TAG "AC-VRBS" //Tag to use in the VERBOSE log macro
+#define LOG_VERBOSE_STACK_SIZE_TAG "AC-STK-VRBS" //Tag to use in the VERBOSE log macro
 
 constexpr auto US_PER_MS = 1000;
 constexpr auto MS_PER_SECOND = 1000;
@@ -146,9 +152,11 @@ inline void log(const std::string& tag, const std::string& message)
 
 //Only verbose log if enabled
 #ifdef LOG_VERBOSE
-#define VERBOSE(tag, message) do { logv(tag, message); } while(0)
+#define VERBOSE(tag, message) do { logv(LOG_VERBOSE_TAG, std::format("[{}] {}", tag, message)); } while(0)
+#define VERBOSE_LOG_STACK_SIZE() do { logv(LOG_VERBOSE_STACK_SIZE_TAG, std::format("[Stack Watermark] {}", uxTaskGetStackHighWaterMark2(nullptr))); } while(0)
 #else
 #define VERBOSE(tag, message) {}
+#define VERBOSE_LOG_STACK_SIZE() {}
 #endif
 
 #endif //AUDIO_CONTROLLER_COMMON_H

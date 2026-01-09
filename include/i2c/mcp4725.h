@@ -94,13 +94,28 @@ namespace mcp4725
         {
             //Make sure to remove the dac from
             //the i2c bus when it is destroyed.
-            //Technically this can fail, but not
-            //sure what to do in that case
-            i2c_master_bus_rm_device(handle);
+            try
+            {
+                if (const auto rm_device_result = i2c_master_bus_rm_device(handle);
+                    rm_device_result != ESP_OK)
+                {
+                    loge(NAMEOF(~dac), std::format("{} Failed to destroy. [0x{:04X}] {}",
+                        log_key,
+                        rm_device_result,
+                        esp_err_to_name(rm_device_result)));
+                }
+            }
+            catch (std::exception& e)
+            {
+                loge(NAMEOF(~dac), std::format("{} An exception occurred while destroying: {}",
+                log_key, e.what()));
+            }
         }
 
         [[nodiscard]] static std::optional<dac> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
         {
+            logi(NAMEOF(distance_sensor), std::format("[DAC 0x{:02X}] Creating device on bus.", addr));
+
             const i2c_device_config_t device_cfg = {
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
                 .device_address = addr,
@@ -115,7 +130,12 @@ namespace mcp4725
             i2c_master_dev_handle_t handle;
 
             if (const auto add_to_bus_result = i2c_master_bus_add_device(bus, &device_cfg, &handle); add_to_bus_result != ESP_OK)
+            {
+                loge(NAMEOF(distance_sensor), std::format("[DAC 0x{:02X}] Failed to create device. [0x{:04X}] {}",
+                    addr, add_to_bus_result, esp_err_to_name(add_to_bus_result)));
+
                 return std::nullopt;
+            }
 
             return dac(handle, addr, timeout_ms);
         }

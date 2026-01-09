@@ -18,67 +18,125 @@
 [[noreturn]]
 void distance_sensor_task(void* task_param_pointer)
 {
-    const auto sensor = static_cast<gp2y0e02b::distance_sensor*>(task_param_pointer);
-
-    for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
+    try
     {
-        uint8_t distance;
+        if (task_param_pointer == nullptr)
+            throw std::invalid_argument("No data was provided to distance_sensor_task.");
 
-        if (sensor->try_update_distance(&distance))
-        { }
+        const auto [setup_data, sensor_index] = *static_cast<sensor_task_param*>(task_param_pointer);
+
+        auto maybe_sensor = setup_data->distance_sensors[sensor_index];
+
+        if (!maybe_sensor.has_value())
+            throw std::invalid_argument("No sensor was provided to distance_sensor_task.");
+
+        auto& sensor = *maybe_sensor;
+
+        for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
+        {
+            try
+            {
+                uint8_t distance;
+
+                if (sensor.try_update_distance(&distance))
+                { }
+            }
+            catch (std::exception& e)
+            {
+                loge(NAMEOF(distance_sensor_task), std::format("{} An exception occurred during distance sensor task (n = {}): {}",
+                    sensor.get_log_key(),
+                    i,
+                    e.what()));
+            }
+        }
     }
+    catch (std::exception& e)
+    {
+        loge(NAMEOF(distance_sensor_task), std::format("An exception occurred during distance sensor task: {}", e.what()));
+    }
+
+    while (true) { vTaskDelay(portMAX_DELAY); }
 }
 
 [[noreturn]]
 void dac_task(void* task_param_pointer)
 {
-    const auto [setup_data] = *static_cast<dac_task_param*>(task_param_pointer);
-
-    timeval ts {};
-
-    for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
+    try
     {
-        //Get tone as frequency in MHz for each sensor, then determine frequency at current time
-        float tones[SENSORS_COUNT] = {};
-        uint8_t actual_tone_count = 0;
+        if (task_param_pointer == nullptr)
+            throw std::invalid_argument("No data was provided to dac_task.");
 
-        for (auto j = 0; j < SENSORS_COUNT; j++)
+        const auto [setup_data] = *static_cast<dac_task_param*>(task_param_pointer);
+
+        const auto maybe_dac = setup_data->dac;
+
+        if (!maybe_dac.has_value())
+            throw std::invalid_argument("No dac was provided to dac_task.");
+
+        const auto& dac = *maybe_dac;
+
+        timeval ts {};
+
+        for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
         {
-            if (setup_data->distance_sensors[j].has_value())
+            try
             {
-                const auto sensor = *setup_data->distance_sensors[j];
-                const auto sensor_frequency_mappings = setup_data->piecewise_frequencies[j];
+                //Get tone as frequency in MHz for each sensor, then determine frequency at current time
+                float tones[SENSORS_COUNT] = {};
+                uint8_t actual_tone_count = 0;
 
-                //Get ratio from sensor's current to max distance, use that to determine tone
-                const auto current_distance = sensor.get_distance();
-                const auto current_max_distance = sensor.get_distance_shift_value();
+                for (auto j = 0; j < SENSORS_COUNT; j++)
+                {
+                    if (setup_data->distance_sensors[j].has_value())
+                    {
+                        const auto sensor = *setup_data->distance_sensors[j];
+                        const auto sensor_frequency_mappings = setup_data->piecewise_frequencies[j];
 
-                const auto ratio = static_cast<float>(current_distance) / static_cast<float>(current_max_distance);
-                const auto tone = piecewise_frequency_range_breakpoint::get_tone(sensor_frequency_mappings, PIECEWISE_FREQUENCY_BREAKPOINT_COUNT, ratio);
-                tones[j] = tone;
+                        //Get ratio from sensor's current to max distance, use that to determine tone
+                        const auto current_distance = sensor.get_distance();
+                        const auto current_max_distance = sensor.get_distance_shift_value();
 
-                actual_tone_count++;
+                        const auto ratio = static_cast<float>(current_distance) / static_cast<float>(current_max_distance);
+                        const auto tone = piecewise_frequency_range_breakpoint::get_tone(sensor_frequency_mappings, PIECEWISE_FREQUENCY_BREAKPOINT_COUNT, ratio);
+                        tones[j] = tone;
+
+                        actual_tone_count++;
+                    }
+                    else
+                    {
+                        tones[j] = 0;
+                    }
+                }
+
+                //If no valid tones, delay and then try again
+                if (actual_tone_count == 0)
+                {
+                    vTaskDelay(1 / portTICK_PERIOD_MS);
+                    continue;
+                }
+
+                gettimeofday(&ts, nullptr);
+                const auto current_ts = total_microseconds(&ts);
+
+                if (const auto next = setup_data->wave->wave(current_ts, tones, SENSORS_COUNT);
+                    dac.try_write_value(static_cast<ushort>(std::ranges::max(0., floor(0x0FFF * next)))))
+                {
+
+                }
             }
-            else
+            catch (std::exception& e)
             {
-                tones[j] = 0;
+                loge(NAMEOF(dac_task), std::format("{} An exception occurred during DAC task (n = {}): {}",
+                dac.get_log_key(),
+                i,
+                e.what()));
             }
-        }
-
-        //If no valid tones, delay and then try again
-        if (actual_tone_count == 0)
-        {
-            vTaskDelay(1 / portTICK_PERIOD_MS);
-            continue;
-        }
-
-        gettimeofday(&ts, nullptr);
-        const auto current_ts = total_microseconds(&ts);
-
-        if (const auto next = setup_data->wave->wave(current_ts, tones, SENSORS_COUNT);
-            setup_data->dac->try_write_value(static_cast<ushort>(std::ranges::max(0., floor(0x0FFF * next)))))
-        {
-
         }
     }
+    catch (std::exception& e)
+    {
+        loge(NAMEOF(dac_task), std::format("An exception occurred during DAC task: {}", e.what()));
+    }
+
+    while (true) { vTaskDelay(portMAX_DELAY); }
 }

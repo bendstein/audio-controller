@@ -9,12 +9,12 @@ constexpr auto I2C_STANDARD_HZ = 100000;
 constexpr auto I2C_FAST_HZ = 400000;
 constexpr auto I2C_HIGH_SPEED_HZ = 34000000;
 
-constexpr auto I2C_PIN_SCL_0 = GPIO_NUM_22;
-constexpr auto I2C_PIN_SDA_0 = GPIO_NUM_23;
+constexpr auto I2C_PIN_SCL_0 = GPIO_NUM_20;
+constexpr auto I2C_PIN_SDA_0 = GPIO_NUM_22;
 constexpr auto I2C_BUS_PORT_0  = -1;
 
-constexpr auto I2C_PIN_SCL_1 = GPIO_NUM_32;
-constexpr auto I2C_PIN_SDA_1 = GPIO_NUM_14;
+constexpr auto I2C_PIN_SCL_1 = GPIO_NUM_5;
+constexpr auto I2C_PIN_SDA_1 = GPIO_NUM_19;
 constexpr auto I2C_BUS_PORT_1 = -1;
 
 constexpr auto I2C_BUS_GLITCH_CT = 7;
