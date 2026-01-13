@@ -14,6 +14,7 @@ bool mcp4725::dac::try_write_value(const power_down_mode power_mode, const uint1
 {
     try
     {
+        assert(handle != nullptr);
         VERBOSE(get_log_key(), std::format("Write value 0x{:04X}, power mode 0x{:02X}.", value, static_cast<uint8_t>(power_mode)));
 
         const uint16_t write_buffer_value = (value & 0x0FFF)
@@ -64,6 +65,7 @@ bool mcp4725::dac::try_general_call(const general_call command) const
 {
     try
     {
+        assert(handle != nullptr);
         VERBOSE(get_log_key(), std::format("General Call 0x{:02X}", static_cast<uint8_t>(command)));
 
         const uint8_t write_buffer[2] = {

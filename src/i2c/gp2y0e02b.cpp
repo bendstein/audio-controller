@@ -208,6 +208,7 @@ bool gp2y0e02b::distance_sensor::try_select_register(register_map_tag tag) const
 {
     try
     {
+        assert(handle != nullptr);
         VERBOSE(get_log_key(), std::format("Select register 0x{:02X}", static_cast<uint8_t>(tag)));
 
         const auto target_register = static_cast<uint8_t>(tag);
@@ -245,6 +246,7 @@ bool gp2y0e02b::distance_sensor::try_read_from_register(register_map_entry* entr
 {
     try
     {
+        assert(handle != nullptr);
         uint8_t buffer_read = 0;
 
         VERBOSE(get_log_key(), std::format("Read from register 0x{:02X}", entry->get_register_address()));
@@ -297,6 +299,7 @@ bool gp2y0e02b::distance_sensor::try_burst_read_from_register(register_map_entry
 {
     try
     {
+        assert(handle != nullptr);
         assert(read_len > 0);
 
         //If read length is 1, call standard read from register
@@ -377,6 +380,8 @@ bool gp2y0e02b::distance_sensor::try_write_to_register(const register_map_entry*
 {
     try
     {
+        assert(handle != nullptr);
+
         VERBOSE(get_log_key(), std::format("Write to register 0x{:02X}", entry->get_register_address()));
 
         //Select register

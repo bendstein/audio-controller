@@ -25,12 +25,12 @@ void distance_sensor_task(void* task_param_pointer)
 
         const auto [setup_data, sensor_index] = *static_cast<sensor_task_param*>(task_param_pointer);
 
-        auto maybe_sensor = setup_data->distance_sensors[sensor_index];
+        const auto maybe_sensor = &setup_data->distance_sensors[sensor_index];
 
-        if (!maybe_sensor.has_value())
+        if (maybe_sensor == nullptr || *maybe_sensor == nullptr)
             throw std::invalid_argument("No sensor was provided to distance_sensor_task.");
 
-        auto& sensor = *maybe_sensor;
+        auto& sensor = **maybe_sensor;
 
         for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
         {
@@ -40,6 +40,8 @@ void distance_sensor_task(void* task_param_pointer)
 
                 if (sensor.try_update_distance(&distance))
                 { }
+
+                vTaskDelay(10 / portTICK_PERIOD_MS);
             }
             catch (std::exception& e)
             {
@@ -68,12 +70,12 @@ void dac_task(void* task_param_pointer)
 
         const auto [setup_data] = *static_cast<dac_task_param*>(task_param_pointer);
 
-        const auto maybe_dac = setup_data->dac;
+        const auto maybe_dac = &setup_data->dac;
 
-        if (!maybe_dac.has_value())
+        if (*maybe_dac == nullptr)
             throw std::invalid_argument("No dac was provided to dac_task.");
 
-        const auto& dac = *maybe_dac;
+        const auto& dac = **maybe_dac;
 
         timeval ts {};
 
@@ -87,14 +89,13 @@ void dac_task(void* task_param_pointer)
 
                 for (auto j = 0; j < SENSORS_COUNT; j++)
                 {
-                    if (setup_data->distance_sensors[j].has_value())
+                    if (setup_data->distance_sensors[j] != nullptr)
                     {
-                        const auto sensor = *setup_data->distance_sensors[j];
                         const auto sensor_frequency_mappings = setup_data->piecewise_frequencies[j];
 
                         //Get ratio from sensor's current to max distance, use that to determine tone
-                        const auto current_distance = sensor.get_distance();
-                        const auto current_max_distance = sensor.get_distance_shift_value();
+                        const auto current_distance = setup_data->distance_sensors[j]->get_distance();
+                        const auto current_max_distance = setup_data->distance_sensors[j]->get_distance_shift_value();
 
                         const auto ratio = static_cast<float>(current_distance) / static_cast<float>(current_max_distance);
                         const auto tone = piecewise_frequency_range_breakpoint::get_tone(sensor_frequency_mappings, PIECEWISE_FREQUENCY_BREAKPOINT_COUNT, ratio);
@@ -111,7 +112,7 @@ void dac_task(void* task_param_pointer)
                 //If no valid tones, delay and then try again
                 if (actual_tone_count == 0)
                 {
-                    vTaskDelay(1 / portTICK_PERIOD_MS);
+                    vTaskDelay(50 / portTICK_PERIOD_MS);
                     continue;
                 }
 
@@ -123,13 +124,15 @@ void dac_task(void* task_param_pointer)
                 {
 
                 }
+
+                vTaskDelay(10 / portTICK_PERIOD_US);
             }
             catch (std::exception& e)
             {
                 loge(NAMEOF(dac_task), std::format("{} An exception occurred during DAC task (n = {}): {}",
-                dac.get_log_key(),
-                i,
-                e.what()));
+                    dac.get_log_key(),
+                    i,
+                    e.what()));
             }
         }
     }

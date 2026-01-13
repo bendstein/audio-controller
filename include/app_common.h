@@ -13,10 +13,18 @@
 #include "driver/gpio.h"
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
+#include <sys/_timeval.h>
 
-#define LOG_VERBOSE //If present, enable VERBOSE log macros
+// #define LOG_VERBOSE //If present, enable VERBOSE log macros, as well as additional debug info
 #define LOG_VERBOSE_TAG "AC-VRBS" //Tag to use in the VERBOSE log macro
-#define LOG_VERBOSE_STACK_SIZE_TAG "AC-STK-VRBS" //Tag to use in the VERBOSE log macro
+
+#ifdef LOG_VERBOSE
+//Whether the application should perform additional debugging/logging logic
+constexpr auto FLAG_VERBOSE = true;
+#else
+//Whether the application should perform additional debugging/logging logic
+constexpr auto FLAG_VERBOSE = false;
+#endif
 
 constexpr auto US_PER_MS = 1000;
 constexpr auto MS_PER_SECOND = 1000;
@@ -24,6 +32,10 @@ constexpr auto US_PER_SECOND = 1000000;
 constexpr auto PIN_LED_BUILTIN = GPIO_NUM_13;
 constexpr uint8_t LOW = 0;
 constexpr uint8_t HIGH = 0;
+
+constexpr size_t SENSORS_COUNT = 1;
+constexpr size_t PIECEWISE_FREQUENCY_BREAKPOINT_COUNT = 2;
+constexpr size_t I2C_DEVICE_CAPACITY = SENSORS_COUNT + 1;
 
 //Doesn't need to be a macro, but I'm doing it to match portTICK_PERIOD_MS being a macro
 #define portTICK_PERIOD_US ((TickType_t)US_PER_MS / portTICK_PERIOD_MS)
@@ -152,11 +164,11 @@ inline void log(const std::string& tag, const std::string& message)
 
 //Only verbose log if enabled
 #ifdef LOG_VERBOSE
-#define VERBOSE(tag, message) do { logv(LOG_VERBOSE_TAG, std::format("[{}] {}", tag, message)); } while(0)
-#define VERBOSE_LOG_STACK_SIZE() do { logv(LOG_VERBOSE_STACK_SIZE_TAG, std::format("[Stack Watermark] {}", uxTaskGetStackHighWaterMark2(nullptr))); } while(0)
+#define VERBOSE(tag, message) logv(LOG_VERBOSE_TAG, std::format("[{}] {}", tag, message))
+#define VERBOSE_LB(tag, message) logv(LOG_VERBOSE_TAG, std::format("[{}]\r\n{}", tag, message))
 #else
 #define VERBOSE(tag, message) {}
-#define VERBOSE_LOG_STACK_SIZE() {}
+#define VERBOSE_LB(tag, message) {}
 #endif
 
 #endif //AUDIO_CONTROLLER_COMMON_H

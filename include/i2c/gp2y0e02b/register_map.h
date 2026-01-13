@@ -5,6 +5,8 @@
 #ifndef AUDIO_CONTROLLER_GP2Y0E02B_REGISTER_MAP_H
 #define AUDIO_CONTROLLER_GP2Y0E02B_REGISTER_MAP_H
 
+#include <cstdint>
+
 namespace gp2y0e02b
 {
     constexpr uint8_t SHIFT_BIT_DISTANCE_64 = 64;

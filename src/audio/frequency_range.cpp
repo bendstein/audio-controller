@@ -5,11 +5,8 @@
 
 float continuous_frequency_range::get_tone(const float value) const
 {
-    if (min == nullptr || max == nullptr) //Invalid range/fn
-        return 0;
-
-    const auto min_freq = min->frequency_megahz();
-    const auto max_freq = max->frequency_megahz();
+    const auto min_freq = min.frequency_megahz();
+    const auto max_freq = max.frequency_megahz();
 
     if (min_freq == max_freq) //Single frequency
         return min_freq;
@@ -31,7 +28,8 @@ float piecewise_frequency_range_breakpoint::get_tone(const piecewise_frequency_r
 
         for (auto i = 0; i < breakpoints_len; i++)
         {
-            const auto [breakpoint, child_range] = breakpoints[i];
+            const auto breakpoint = breakpoints[i].breakpoint;
+            const auto child_range = &*breakpoints[i].range;
 
             if (breakpoint == previous_breakpoint) //Prevent division by 0
                 continue;

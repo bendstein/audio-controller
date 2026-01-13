@@ -9,8 +9,6 @@
 
 app_state do_setup()
 {
-    VERBOSE_LOG_STACK_SIZE();
-
     tone::dft(); //Init static default value for tone at start of program
 
     auto setup = app_state {
@@ -25,22 +23,23 @@ app_state do_setup()
             I2C_PIN_SCL_1
         ),
         .distance_sensors = {},
-        .dac = std::nullopt,
+        .dac = nullptr,
         .wave = new sin_wave_provider(),
         .sensor_tasks = {},
-        .dac_task = std::nullopt,
+        .dac_task = nullptr,
         .piecewise_frequencies = {
             {
-                piecewise_frequency_range_breakpoint(),
-                piecewise_frequency_range_breakpoint()
+                piecewise_frequency_range_breakpoint(PIECEWISE_FREQUENCY_BREAKPOINTS[0],
+                    single_frequency_range(
+                        tone(musical_note::A, 4)
+                    )),
+                piecewise_frequency_range_breakpoint(PIECEWISE_FREQUENCY_BREAKPOINTS[1], single_frequency_range(*tone::dft()))
             }
         }
     };
 
-    VERBOSE_LOG_STACK_SIZE();
-
     init_distance_sensors(&setup);
-    // init_dac(&setup);
+    init_dac(&setup);
 
     return setup;
 }
@@ -64,8 +63,6 @@ i2c_master_bus_handle_t init_i2c_bus(const i2c_port_num_t port, const gpio_num_t
         }
     };
 
-    VERBOSE_LOG_STACK_SIZE();
-
     gpio_reset_pin(bus_cfg.sda_io_num);
     gpio_reset_pin(bus_cfg.scl_io_num);
     gpio_set_direction(bus_cfg.sda_io_num, GPIO_MODE_OUTPUT);
@@ -77,8 +74,6 @@ i2c_master_bus_handle_t init_i2c_bus(const i2c_port_num_t port, const gpio_num_t
     logi("setup", std::format("Finished initializing I2C bus. Handle: 0x{:08X}",
         reinterpret_cast<uintptr_t>(handle)));
 
-    VERBOSE_LOG_STACK_SIZE();
-
     return handle;
 }
 
@@ -86,12 +81,10 @@ void init_distance_sensors(app_state* setup)
 {
     for (auto i = 0; i < SENSORS_COUNT; i++)
     {
-        VERBOSE_LOG_STACK_SIZE();
-
         bool setup_successful = true;
 
-        setup->distance_sensors[i] = std::nullopt;
-        setup->sensor_tasks[i] = std::nullopt;
+        setup->distance_sensors[i] = nullptr;
+        setup->sensor_tasks[i] = nullptr;
 
         try
         {
@@ -100,59 +93,30 @@ void init_distance_sensors(app_state* setup)
                 setup->i2c_bus_0,
                 SENSOR_ADDRESSES[i],
                 gp2y0e02b::distance_sensor::TIMEOUT_MS_DFT
-            ); maybe_sensor.has_value())
+            ); maybe_sensor != nullptr)
             {
-                auto& sensor = *maybe_sensor;
-
-                VERBOSE_LOG_STACK_SIZE();
-
-                logi("setup", std::format("{} Created handle for distance sensor #{}.", sensor.get_log_key(), i));
-
-                //Make sure device is reachable
-                logi("setup", std::format("{} Bus 0 probe.", sensor.get_log_key()));
-
-                const auto probe_result = i2c_master_probe(
-                    setup->i2c_bus_0,
-                    SENSOR_ADDRESSES[i],
-                    gp2y0e02b::distance_sensor::TIMEOUT_MS_DFT);
-
-                if (probe_result != ESP_OK)
-                {
-                    loge("setup", std::format("{} Probe failed. [0x{:04X}] {}.", sensor.get_log_key(), probe_result, esp_err_to_name(probe_result)));
-                    continue;
-                }
-
-                VERBOSE_LOG_STACK_SIZE();
-
-                logi("setup", std::format("{} Probe success.", sensor.get_log_key()));
-
-                setup->distance_sensors[i] = maybe_sensor;
+                setup->distance_sensors[i].swap(maybe_sensor);
 
                 //Configure sensor
-                logi("setup", std::format("{} Configuring sensor.", sensor.get_log_key()));
+                logi("setup", std::format("{} Configuring sensor.", setup->distance_sensors[i]->get_log_key()));
 
                 //Perform soft reset of sensor to make sure
                 //all settings are at initial default
-                if (!sensor.try_soft_reset())
+                if (!setup->distance_sensors[i]->try_soft_reset())
                 {
-                    VERBOSE_LOG_STACK_SIZE();
-
                     setup_successful = false;
-                    loge("setup", std::format("{} Failed to perform software reset.", sensor.get_log_key()));
+                    loge("setup", std::format("{} Failed to perform software reset.", setup->distance_sensors[i]->get_log_key()));
                 }
 
-                if (!sensor.try_apply_distance_shift(gp2y0e02b::shift_bit::cm_128))
+                if (!setup->distance_sensors[i]->try_apply_distance_shift(gp2y0e02b::shift_bit::cm_128))
                 {
-                    VERBOSE_LOG_STACK_SIZE();
-
                     setup_successful = false;
-                    loge("setup", std::format("{} Failed to apply distance shift.", sensor.get_log_key()));
+                    loge("setup", std::format("{} Failed to apply distance shift.", setup->distance_sensors[i]->get_log_key()));
                 }
 
                 if (setup_successful)
                 {
-                    VERBOSE_LOG_STACK_SIZE();
-                    logi("setup", std::format("{} Successfully configured distance sensor #{}.", sensor.get_log_key(), i));
+                    logi("setup", std::format("{} Successfully configured distance sensor #{}.", setup->distance_sensors[i]->get_log_key(), i));
 
                     BaseType_t create_task_result;
 
@@ -163,48 +127,51 @@ void init_distance_sensors(app_state* setup)
                         setup
                     ))
                     {
-                        logi("setup", std::format("{} Started task 0x{:08X} for distance sensor #{}.", sensor.get_log_key(),
+                        logi("setup", std::format("{} Started task 0x{:08X} for distance sensor #{}.",
+                            setup->distance_sensors[i]->get_log_key(),
                             reinterpret_cast<uintptr_t>(*setup->sensor_tasks[i]), i));
                     }
                     else
                     {
                         setup_successful = false;
-                        loge("setup", std::format("{} Failed to start task for distance sensor #{}. ({})", sensor.get_log_key(),
+                        loge("setup", std::format("{} Failed to start task for distance sensor #{}. ({})",
+                            setup->distance_sensors[i]->get_log_key(),
                             i, create_task_result));
                     }
                 }
                 else
                 {
                     setup_successful = false;
-                    loge("setup", std::format("{} Failed to configure distance sensor #{}.", sensor.get_log_key(), i));
+                    loge("setup", std::format("{} Failed to configure distance sensor #{}.",
+                        setup->distance_sensors[i]->get_log_key(), i));
                 }
             }
             else
             {
                 setup_successful = false;
-                loge("setup", std::format("[distance sensor 0x{:02X}] Failed to create distance sensor #{}.", SENSOR_ADDRESSES[i], i));
+                loge("setup", std::format("[distance sensor 0x{:02X}] Failed to create distance sensor #{}.",
+                    SENSOR_ADDRESSES[i], i));
             }
         }
         catch (const std::exception& e)
         {
             setup_successful = false;
-            loge("setup", std::format("[distance sensor 0x{:02X}] An exception occurred while attempting to create distance sensor #{}: {}", SENSOR_ADDRESSES[i], i, e.what()));
+            loge("setup", std::format("[distance sensor 0x{:02X}] An exception occurred while attempting to create distance sensor #{}: {}",
+                SENSOR_ADDRESSES[i], i, e.what()));
         }
-
-        VERBOSE_LOG_STACK_SIZE();
 
         if (!setup_successful)
         {
             //Clear sensor/task if unsuccessful
-            if (setup->sensor_tasks[i].has_value())
+            if (setup->sensor_tasks[i] != nullptr)
             {
                 if (const auto created_task = *setup->sensor_tasks[i]; created_task != nullptr)
                     vTaskDelete(created_task);
 
-                setup->sensor_tasks[i] = std::nullopt;
+                setup->sensor_tasks[i] = nullptr;
             }
 
-            setup->distance_sensors[i] = std::nullopt;
+            setup->distance_sensors[i] = nullptr;
         }
     }
 }
@@ -213,21 +180,16 @@ void init_dac(app_state* setup)
 {
     bool setup_successful = true;
 
-    VERBOSE_LOG_STACK_SIZE();
-
     try
     {
-        if (const auto maybe_dac = mcp4725::dac::try_create_on_bus(
+        if (auto maybe_dac = mcp4725::dac::try_create_on_bus(
             setup->i2c_bus_1,
             DAC_ADDRESS,
-            mcp4725::dac::TIMEOUT_MS_DFT); maybe_dac.has_value())
+            mcp4725::dac::TIMEOUT_MS_DFT); maybe_dac != nullptr)
         {
-            VERBOSE_LOG_STACK_SIZE();
+            setup->dac.swap(maybe_dac);
 
-            setup->dac = maybe_dac;
-            const auto& dac = *maybe_dac;
-
-            logi("setup", std::format("{} Created handle for dac.", dac.get_log_key()));
+            logi("setup", std::format("{} Created handle for dac.", setup->dac->get_log_key()));
 
             BaseType_t create_task_result;
 
@@ -237,12 +199,12 @@ void init_dac(app_state* setup)
                 setup
             ))
             {
-                logi("setup", std::format("{} Started task 0x{:08X} for dac.", dac.get_log_key(), reinterpret_cast<uintptr_t>(*setup->dac_task)));
+                logi("setup", std::format("{} Started task 0x{:08X} for dac.", setup->dac->get_log_key(), reinterpret_cast<uintptr_t>(*setup->dac_task)));
             }
             else
             {
                 setup_successful = false;
-                loge("setup", std::format("{} Failed to start task for dac. ({})", dac.get_log_key(), create_task_result));
+                loge("setup", std::format("{} Failed to start task for dac. ({})", setup->dac->get_log_key(), create_task_result));
             }
         }
         else
@@ -257,60 +219,18 @@ void init_dac(app_state* setup)
         loge("setup", std::format("[DAC 0x{:02X}] An exception occurred while attempting to create DAC: {}", DAC_ADDRESS, e.what()));
     }
 
-    VERBOSE_LOG_STACK_SIZE();
-
     if (!setup_successful)
     {
         //Clear dac/task if unsuccessful
-        if (setup->dac_task.has_value())
+        if (setup->dac_task != nullptr)
         {
             if (const auto created_task = *setup->dac_task; created_task != nullptr)
                 vTaskDelete(created_task);
 
-            setup->dac_task = std::nullopt;
+            setup->dac_task = nullptr;
         }
 
-        setup->dac_task = std::nullopt;
-    }
-}
-
-bool try_configure_gp2y0e02b(gp2y0e02b::distance_sensor* sensor)
-{
-    try
-    {
-        VERBOSE_LOG_STACK_SIZE();
-
-        bool success = true;
-
-        logi("setup", std::format("{} Configuring sensor.", sensor->get_log_key()));
-
-        //Perform soft reset of sensor to make sure
-        //all settings are at initial default
-        if (!sensor->try_soft_reset())
-        {
-            VERBOSE_LOG_STACK_SIZE();
-
-            loge("setup", std::format("{} Failed to perform software reset.", sensor->get_log_key()));
-            success = false;
-        }
-
-        if (!sensor->try_apply_distance_shift(gp2y0e02b::shift_bit::cm_128))
-        {
-            VERBOSE_LOG_STACK_SIZE();
-
-            loge("setup", std::format("{} Failed to apply distance shift.", sensor->get_log_key()));
-            success = false;
-        }
-
-        VERBOSE_LOG_STACK_SIZE();
-
-        //Return whether all operations succeeded
-        return success;
-    }
-    catch (std::exception& e)
-    {
-        loge("setup", std::format("{} An exception occurred while configuring sensor: {}", sensor->get_log_key(), e.what()));
-        return false;
+        setup->dac_task = nullptr;
     }
 }
 
@@ -318,9 +238,7 @@ bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* r
 {
     try
     {
-        VERBOSE_LOG_STACK_SIZE();
-
-        if (setup->distance_sensors[sensor_ndx].has_value())
+        if (setup->distance_sensors[sensor_ndx] != nullptr)
         {
             auto task_param = sensor_task_param {
                 .state = setup,
@@ -338,9 +256,7 @@ bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* r
                 &task_handle
             );
 
-            VERBOSE_LOG_STACK_SIZE();
-
-            setup->sensor_tasks[sensor_ndx] = task_handle;
+            setup->sensor_tasks[sensor_ndx] = std::make_unique<TaskHandle_t>(task_handle);
 
             if (*result_code != pdPASS)
             {
@@ -352,8 +268,6 @@ bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* r
             return *result_code == pdPASS;
         }
 
-        VERBOSE_LOG_STACK_SIZE();
-
         loge("setup", std::format("Cannot configure task for unconfigured distance sensor #{}.", sensor_ndx));
         *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument
 
@@ -362,7 +276,7 @@ bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* r
     catch (std::exception& e)
     {
         loge("setup", std::format("{} An exception occurred while configuring task for distance sensor #{}: {}",
-            setup->distance_sensors[sensor_ndx].has_value()? setup->distance_sensors[sensor_ndx]->get_log_key() : "[unconfigured sensor]",
+            setup->distance_sensors[sensor_ndx] == nullptr? "[unconfigured sensor]" : setup->distance_sensors[sensor_ndx]->get_log_key(),
             sensor_ndx,
             e.what()));
 
@@ -375,11 +289,9 @@ bool try_create_dac_task(const std::string& task_name, BaseType_t* result_code, 
 {
     try
     {
-        VERBOSE_LOG_STACK_SIZE();
-
         VERBOSE("setup", std::format("Creating task {}.", task_name));
 
-        if (setup->dac.has_value())
+        if (setup->dac != nullptr)
         {
             auto task_param = dac_task_param {
                 .state = setup
@@ -398,9 +310,7 @@ bool try_create_dac_task(const std::string& task_name, BaseType_t* result_code, 
                 &task_handle
             );
 
-            VERBOSE_LOG_STACK_SIZE();
-
-            setup->dac_task = task_handle;
+            setup->dac_task = std::make_unique<TaskHandle_t>(task_handle);
 
             VERBOSE("setup", std::format("Result of xTaskCreate for task {} | Code: 0x{:04X}, Handle: 0x{:08X}",
                 task_name,
@@ -414,22 +324,18 @@ bool try_create_dac_task(const std::string& task_name, BaseType_t* result_code, 
                     static_cast<int>(*result_code)));
             }
 
-            VERBOSE_LOG_STACK_SIZE();
-
             return *result_code == pdPASS;
         }
 
         loge("setup", "Cannot configure task for unconfigured DAC.");
         *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument
 
-        VERBOSE_LOG_STACK_SIZE();
-
         return false;
     }
     catch (std::exception& e)
     {
         loge("setup", std::format("{} An exception occurred while configuring task for DAC: {}",
-            setup->dac.has_value()? setup->dac->get_log_key() : "[unconfigured DAC]",
+            setup->dac == nullptr? "[unconfigured DAC]" : setup->dac->get_log_key(),
             e.what()));
 
         *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument

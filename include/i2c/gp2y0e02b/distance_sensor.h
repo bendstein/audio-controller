@@ -4,10 +4,10 @@
 
 #ifndef AUDIO_CONTROLLER_GP2Y0E02B_H
 #define AUDIO_CONTROLLER_GP2Y0E02B_H
-#include <optional>
 #include <stdexcept>
 #include <format>
 #include <driver/i2c_master.h>
+#include <memory>
 
 #include "freertos/FreeRTOS.h"
 #include "freertos/task.h"
@@ -16,6 +16,10 @@
 #include "i2c/i2c.h"
 #include "app_common.h"
 #include "register_map.h"
+#include <memory>
+#include <utility>
+
+#include "hal/i2c_types.h"
 
 namespace gp2y0e02b
 {
@@ -59,7 +63,6 @@ namespace gp2y0e02b
         distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address)
             : handle(device_handle), address(address)
         {
-            assert(device_handle != nullptr);
             state.reset();
             log_key = make_log_key();
         }
@@ -71,10 +74,34 @@ namespace gp2y0e02b
             log_key = make_log_key();
         }
 
+        distance_sensor(const distance_sensor& other) = delete;
+
+        distance_sensor(distance_sensor&& other) noexcept
+            : handle(std::exchange(other.handle, nullptr)), timeout_ms(other.timeout_ms),
+              state(other.state), address(other.address)
+        {
+            log_key = make_log_key();
+        }
+
+        distance_sensor& operator=(const distance_sensor& other) = delete;
+
+        distance_sensor& operator=(distance_sensor&& other) noexcept
+        {
+            if (this == &other)
+                return *this;
+
+            std::swap(handle, other.handle);
+            timeout_ms = other.timeout_ms;
+            state = other.state;
+            address = other.address;
+            log_key = make_log_key();
+            return *this;
+        }
+
         [[nodiscard]] int32_t get_timeout_ms() const { return timeout_ms; }
         void set_timeout(const int32_t timeout) { timeout_ms = timeout; }
 
-        [[nodiscard]] i2c_master_dev_handle_t get_handle() const { return handle; }
+        [[nodiscard]] uint8_t get_addr() const { return address; }
 
         [[nodiscard]] const std::string& get_log_key() const { return log_key; }
 
@@ -174,7 +201,7 @@ namespace gp2y0e02b
          * @return The created distance sensor, or none if failed
          * @remark Adds a new device to the master bus
          */
-        [[nodiscard]] static std::optional<distance_sensor> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
+        [[nodiscard]] static std::unique_ptr<distance_sensor> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
         {
             logi(NAMEOF(distance_sensor), std::format("[distance sensor 0x{:02X}] Creating device on bus.", addr));
 
@@ -195,31 +222,38 @@ namespace gp2y0e02b
                 loge(NAMEOF(distance_sensor), std::format("[distance sensor 0x{:02X}] Failed to create device. [0x{:04X}] {}",
                     addr, add_to_bus_result, esp_err_to_name(add_to_bus_result)));
 
-                return std::nullopt;
+                return nullptr;
             }
 
-            return distance_sensor(handle, addr, timeout_ms);
+            return std::make_unique<distance_sensor>(distance_sensor(handle, addr, timeout_ms));
         }
 
         ~distance_sensor()
         {
-            //Make sure to remove the sensor from
-            //the i2c bus when it is destroyed.
-            try
+            //Remove device from bus on destroy
+            if (handle != nullptr)
             {
-                if (const auto rm_device_result = i2c_master_bus_rm_device(handle);
-                    rm_device_result != ESP_OK)
+                try
                 {
-                    loge(NAMEOF(~distance_sensor), std::format("{} Failed to destroy. [0x{:04X}] {}",
-                        log_key,
-                        rm_device_result,
-                        esp_err_to_name(rm_device_result)));
+                    loge(NAMEOF(~distance_sensor), std::format("{} Removing device 0x{:08X} from bus.",
+                         log_key,
+                         reinterpret_cast<uintptr_t>(handle)));
+
+                    if (const auto rm_device_result = i2c_master_bus_rm_device(handle);
+                        rm_device_result != ESP_OK)
+                    {
+                        loge(NAMEOF(~distance_sensor), std::format("{} Failed to remove device 0x{:08X} from bus. [0x{:04X}] {}",
+                            log_key,
+                            reinterpret_cast<uintptr_t>(handle),
+                            rm_device_result,
+                            esp_err_to_name(rm_device_result)));
+                    }
                 }
-            }
-            catch (std::exception& e)
-            {
-                loge(NAMEOF(~distance_sensor), std::format("{} An exception occurred while destroying: {}",
-                log_key, e.what()));
+                catch (std::exception& e)
+                {
+                    loge(NAMEOF(~distance_sensor), std::format("{} An exception occurred while removing device 0x{:08X} from bus: {}",
+                        log_key, reinterpret_cast<uintptr_t>(handle), e.what()));
+                }
             }
         }
 
@@ -240,7 +274,7 @@ namespace gp2y0e02b
 
             const auto maybe_sensor = try_create_on_bus(bus, I2C_ADDR_DFT, -1);
 
-            if (!maybe_sensor.has_value())
+            if (maybe_sensor == nullptr)
                 throw std::runtime_error("Failed to create sensor");
 
             const auto& sensor = *maybe_sensor;

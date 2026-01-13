@@ -6,6 +6,8 @@
 #define AUDIO_CONTROLLER_MCP4725_H
 
 #include <format>
+#include <memory>
+#include <utility>
 #include <driver/i2c_master.h>
 #include <driver/i2c_types.h>
 
@@ -61,7 +63,6 @@ namespace mcp4725
         dac(i2c_master_dev_handle_t device_handle, const uint8_t address)
             : handle(device_handle), address(address)
         {
-            assert(device_handle != nullptr);
             log_key = make_log_key();
         }
 
@@ -70,6 +71,30 @@ namespace mcp4725
         {
             timeout_ms = timeout;
             log_key = make_log_key();
+        }
+
+        dac(const dac& other) = delete;
+
+        dac(dac&& other) noexcept
+            : handle(std::exchange(other.handle, nullptr)),
+              timeout_ms(other.timeout_ms), address(other.address)
+        {
+            log_key = make_log_key();
+        }
+
+        dac& operator=(const dac& other) = delete;
+
+        dac& operator=(dac&& other) noexcept
+        {
+            if (this == &other)
+                return *this;
+
+            std::swap(handle, other.handle);
+            timeout_ms = other.timeout_ms;
+            address = other.address;
+            log_key = make_log_key();
+
+            return *this;
         }
 
         [[nodiscard]] int32_t get_timeout_ms() const { return timeout_ms; }
@@ -92,34 +117,40 @@ namespace mcp4725
 
         ~dac()
         {
-            //Make sure to remove the dac from
-            //the i2c bus when it is destroyed.
-            try
+            //Remove device from bus on destroy
+            if (handle != nullptr)
             {
-                if (const auto rm_device_result = i2c_master_bus_rm_device(handle);
-                    rm_device_result != ESP_OK)
+                try
                 {
-                    loge(NAMEOF(~dac), std::format("{} Failed to destroy. [0x{:04X}] {}",
-                        log_key,
-                        rm_device_result,
-                        esp_err_to_name(rm_device_result)));
+                    loge(NAMEOF(~dac), std::format("{} Removing device 0x{:08X} from bus.",
+                         log_key,
+                         reinterpret_cast<uintptr_t>(handle)));
+
+                    if (const auto rm_device_result = i2c_master_bus_rm_device(handle);
+                        rm_device_result != ESP_OK)
+                    {
+                        loge(NAMEOF(~dac), std::format("{} Failed to remove device 0x{:08X} from bus. [0x{:04X}] {}",
+                            log_key,
+                            reinterpret_cast<uintptr_t>(handle),
+                            rm_device_result,
+                            esp_err_to_name(rm_device_result)));
+                    }
                 }
-            }
-            catch (std::exception& e)
-            {
-                loge(NAMEOF(~dac), std::format("{} An exception occurred while destroying: {}",
-                log_key, e.what()));
+                catch (std::exception& e)
+                {
+                    loge(NAMEOF(~dac), std::format("{} An exception occurred while removing device 0x{:08X} from bus: {}",
+                        log_key, reinterpret_cast<uintptr_t>(handle), e.what()));
+                }
             }
         }
 
-        [[nodiscard]] static std::optional<dac> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
+        [[nodiscard]] static std::unique_ptr<dac> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
         {
-            logi(NAMEOF(distance_sensor), std::format("[DAC 0x{:02X}] Creating device on bus.", addr));
+            logi(NAMEOF(dac), std::format("[DAC 0x{:02X}] Creating device on bus.", addr));
 
             const i2c_device_config_t device_cfg = {
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
                 .device_address = addr,
-                // .device_address = static_cast<uint8_t>(addr >> 1),
                 .scl_speed_hz = I2C_FAST_HZ,
                 .scl_wait_us = I2C_DEV_SCL_WAIT_US,
                 .flags = {
@@ -131,13 +162,13 @@ namespace mcp4725
 
             if (const auto add_to_bus_result = i2c_master_bus_add_device(bus, &device_cfg, &handle); add_to_bus_result != ESP_OK)
             {
-                loge(NAMEOF(distance_sensor), std::format("[DAC 0x{:02X}] Failed to create device. [0x{:04X}] {}",
+                loge(NAMEOF(dac), std::format("[DAC 0x{:02X}] Failed to create device. [0x{:04X}] {}",
                     addr, add_to_bus_result, esp_err_to_name(add_to_bus_result)));
 
-                return std::nullopt;
+                return nullptr;
             }
 
-            return dac(handle, addr, timeout_ms);
+            return std::make_unique<dac>(dac(handle, addr, timeout_ms));
         }
     };
 

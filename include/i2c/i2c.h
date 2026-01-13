@@ -5,6 +5,8 @@
 #ifndef AUDIO_CONTROLLER_I2C_H
 #define AUDIO_CONTROLLER_I2C_H
 
+#include <soc/gpio_num.h>
+
 constexpr auto I2C_STANDARD_HZ = 100000;
 constexpr auto I2C_FAST_HZ = 400000;
 constexpr auto I2C_HIGH_SPEED_HZ = 34000000;
