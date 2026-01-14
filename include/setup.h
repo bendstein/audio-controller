@@ -28,8 +28,10 @@ static constexpr float PIECEWISE_FREQUENCY_BREAKPOINTS[PIECEWISE_FREQUENCY_BREAK
 
 [[nodiscard]] i2c_master_bus_handle_t init_i2c_bus(i2c_port_num_t port, gpio_num_t sda, gpio_num_t scl);
 void init_distance_sensors(app_state* setup);
-void init_dac(app_state* setup);
+void init_dac_controller(app_state* setup);
+// void init_dac(app_state* setup);
 bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, size_t sensor_ndx, app_state* setup);
-bool try_create_dac_task(const std::string& task_name, BaseType_t* result_code, app_state* setup);
+// bool try_create_dac_task(const std::string& task_name, BaseType_t* result_code, app_state* setup);
+bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_code, app_state* setup);
 
 #endif //AUDIO_CONTROLLER_SETUP_H

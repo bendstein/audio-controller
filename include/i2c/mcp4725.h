@@ -122,7 +122,7 @@ namespace mcp4725
             {
                 try
                 {
-                    loge(NAMEOF(~dac), std::format("{} Removing device 0x{:08X} from bus.",
+                    logi(NAMEOF(~dac), std::format("{} Removing device 0x{:08X} from bus.",
                          log_key,
                          reinterpret_cast<uintptr_t>(handle)));
 

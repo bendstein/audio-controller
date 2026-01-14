@@ -6,6 +6,7 @@
 #include <algorithm>
 
 #include "i2c/mcp4725.h"
+#include "audio/dac_controller.h"
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
@@ -60,6 +61,70 @@ void distance_sensor_task(void* task_param_pointer)
     while (true) { vTaskDelay(portMAX_DELAY); }
 }
 
+[[noreturn]]
+void dac_write_task(void* task_param_pointer)
+{
+    try
+    {
+        if (task_param_pointer == nullptr)
+            throw std::invalid_argument("No data was provided to dac_write_task.");
+
+        const auto [setup_data] = *static_cast<dac_write_task_param*>(task_param_pointer);
+
+        if (setup_data->dac_ctrl == nullptr)
+            throw std::invalid_argument("No dac controller was provided to dac_write_task.");
+
+        auto& dac_controller = *setup_data->dac_ctrl;
+
+        //Collect the current frequencies corresponding to each sensor,
+        //and send them to the DAC controller
+        do
+        {
+            try
+            {
+                //Get tone as frequency in MHz for each sensor, then determine frequency at current time
+                float tones[SENSORS_COUNT] = {};
+                uint8_t tone_count = 0;
+
+                for (auto j = 0; j < SENSORS_COUNT; j++)
+                {
+                    if (setup_data->distance_sensors[j] != nullptr)
+                    {
+                        const auto sensor_frequency_mappings = setup_data->piecewise_frequencies[j];
+
+                        //Get ratio from sensor's current to max distance, use that to determine tone
+                        const auto current_distance = setup_data->distance_sensors[j]->get_distance();
+                        const auto current_max_distance = setup_data->distance_sensors[j]->get_distance_shift_value();
+
+                        const auto ratio = static_cast<float>(current_distance) / static_cast<float>(current_max_distance);
+                        const auto tone = piecewise_frequency_range_breakpoint::get_tone(sensor_frequency_mappings, PIECEWISE_FREQUENCY_BREAKPOINT_COUNT, ratio);
+                        tones[tone_count++] = tone;
+                    }
+                }
+
+                dac_controller.accept_frequencies(tones, tone_count);
+
+                vTaskDelay(10 / portTICK_PERIOD_US);
+            }
+            catch (std::exception& e)
+            {
+                loge(NAMEOF(dac_task), std::format("{} An exception occurred during DAC write task: {}",
+                    dac_controller::LOG_KEY,
+                    e.what()));
+            }
+
+            vTaskDelay(100 / portTICK_PERIOD_MS);
+        } while (true);
+    }
+    catch (std::exception& e)
+    {
+        loge(NAMEOF(dac_write_task), std::format("An exception occurred during DAC write task: {}", e.what()));
+    }
+
+    while (true) { vTaskDelay(portMAX_DELAY); }
+}
+
+/*
 [[noreturn]]
 void dac_task(void* task_param_pointer)
 {
@@ -143,3 +208,4 @@ void dac_task(void* task_param_pointer)
 
     while (true) { vTaskDelay(portMAX_DELAY); }
 }
+*/

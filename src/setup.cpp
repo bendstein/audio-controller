@@ -23,10 +23,12 @@ app_state do_setup()
             I2C_PIN_SCL_1
         ),
         .distance_sensors = {},
-        .dac = nullptr,
+        // .dac = nullptr,
+        .dac_ctrl = nullptr,
         .wave = new sin_wave_provider(),
         .sensor_tasks = {},
-        .dac_task = nullptr,
+        .dac_write_task = nullptr,
+        // .dac_task = nullptr,
         .piecewise_frequencies = {
             {
                 piecewise_frequency_range_breakpoint(PIECEWISE_FREQUENCY_BREAKPOINTS[0],
@@ -39,7 +41,8 @@ app_state do_setup()
     };
 
     init_distance_sensors(&setup);
-    init_dac(&setup);
+    // init_dac(&setup);
+    init_dac_controller(&setup);
 
     return setup;
 }
@@ -176,6 +179,192 @@ void init_distance_sensors(app_state* setup)
     }
 }
 
+void init_dac_controller(app_state* setup)
+{
+    bool setup_successful = true;
+
+    try
+    {
+        if (auto maybe_dac_controller = dac_controller::try_create();
+            maybe_dac_controller != nullptr)
+        {
+            setup->dac_ctrl.swap(maybe_dac_controller);
+
+            logi("setup", std::format("{} Created DAC controller.", dac_controller::LOG_KEY));
+
+            BaseType_t create_task_result;
+
+            if (try_create_dac_write_task(
+                "DAC-WRITE",
+                &create_task_result,
+                setup
+            ))
+            {
+                logi("setup", std::format("{} Started task 0x{:08X} for DAC write.",
+                    dac_controller::LOG_KEY,
+                    reinterpret_cast<uintptr_t>(*setup->dac_write_task)));
+            }
+            else
+            {
+                setup_successful = false;
+                loge("setup", std::format("{} Failed to start task for DAC write. ({})",
+                    dac_controller::LOG_KEY,
+                    create_task_result));
+            }
+
+            //Start DAC main task
+            if (setup_successful)
+            {
+                if (const auto dac_controller_start_result = setup->dac_ctrl->start();
+                    dac_controller_start_result != start_dac_controller_task_result::ERR)
+                {
+                    logi("setup", std::format("{} Successfully started DAC controller main task.", dac_controller::LOG_KEY));
+                }
+                else
+                {
+                    setup_successful = false;
+                    loge("setup", std::format("{} Failed to start DAC controller main task.", dac_controller::LOG_KEY));
+                }
+            }
+        }
+        else
+        {
+            setup_successful = false;
+            loge("setup", std::format("{} Failed to create DAC controller.", dac_controller::LOG_KEY));
+        }
+    }
+    catch (const std::exception& e)
+    {
+        setup_successful = false;
+        loge("setup", std::format("{} An exception occurred while attempting to create DAC controller: {}", dac_controller::LOG_KEY, e.what()));
+    }
+
+    if (!setup_successful)
+    {
+        //Clear dac/task if unsuccessful
+        if (setup->dac_write_task != nullptr)
+        {
+            if (const auto created_task = *setup->dac_write_task; created_task != nullptr)
+                vTaskDelete(created_task);
+
+            setup->dac_write_task = nullptr;
+        }
+
+        setup->dac_ctrl = nullptr;
+    }
+}
+
+bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, const size_t sensor_ndx, app_state* setup)
+{
+    try
+    {
+        if (setup->distance_sensors[sensor_ndx] != nullptr)
+        {
+            auto task_param = sensor_task_param {
+                .state = setup,
+                .index = sensor_ndx
+            };
+
+            TaskHandle_t task_handle;
+
+            *result_code = xTaskCreate(
+                distance_sensor_task,
+                task_name.c_str(),
+                DISTANCE_SENSOR_TASK_STACK_SIZE,
+                &task_param,
+                DISTANCE_SENSOR_TASK_PRIORITY,
+                &task_handle
+            );
+
+            setup->sensor_tasks[sensor_ndx] = std::make_unique<TaskHandle_t>(task_handle);
+
+            if (*result_code != pdPASS)
+            {
+                loge("setup", std::format("{} Failed to create task. Code: 0x{:04X}.",
+                    setup->distance_sensors[sensor_ndx]->get_log_key(),
+                    static_cast<int>(*result_code)));
+            }
+
+            return *result_code == pdPASS;
+        }
+
+        loge("setup", std::format("Cannot configure task for unconfigured distance sensor #{}.", sensor_ndx));
+        *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument
+
+        return false;
+    }
+    catch (std::exception& e)
+    {
+        loge("setup", std::format("{} An exception occurred while configuring task for distance sensor #{}: {}",
+            setup->distance_sensors[sensor_ndx] == nullptr? "[unconfigured sensor]" : setup->distance_sensors[sensor_ndx]->get_log_key(),
+            sensor_ndx,
+            e.what()));
+
+        *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument
+        return false;
+    }
+}
+
+bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_code, app_state* setup)
+{
+    try
+    {
+        VERBOSE("setup", std::format("Creating task {}.", task_name));
+
+        if (setup->dac_ctrl != nullptr)
+        {
+            auto task_param = dac_write_task_param {
+                .state = setup
+            };
+
+            TaskHandle_t task_handle;
+
+            VERBOSE("setup", std::format("Calling xTaskCreate for task {}.", task_name));
+
+            *result_code = xTaskCreate(
+                dac_write_task,
+                task_name.c_str(),
+                DAC_TASK_STACK_SIZE,
+                &task_param,
+                DAC_TASK_PRIORITY,
+                &task_handle
+            );
+
+            setup->dac_write_task = std::make_unique<TaskHandle_t>(task_handle);
+
+            VERBOSE("setup", std::format("Result of xTaskCreate for task {} | Code: 0x{:04X}, Handle: 0x{:08X}",
+                task_name,
+                static_cast<int>(*result_code),
+                reinterpret_cast<uintptr_t>(task_handle)));
+
+            if (*result_code != pdPASS)
+            {
+                loge("setup", std::format("{} Failed to create task {}. Code: 0x{:04X}.",
+                    dac_controller::LOG_KEY,
+                    task_name,
+                    static_cast<int>(*result_code)));
+            }
+
+            return *result_code == pdPASS;
+        }
+
+        loge("setup", "Cannot configure write task for unconfigured DAC controller.");
+        *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument
+
+        return false;
+    }
+    catch (std::exception& e)
+    {
+        loge("setup", std::format("{} An exception occurred while configuring write task for DAC: {}",
+            dac_controller::LOG_KEY,
+            e.what()));
+
+        *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument
+        return false;
+    }
+}
+
+/*
 void init_dac(app_state* setup)
 {
     bool setup_successful = true;
@@ -231,57 +420,6 @@ void init_dac(app_state* setup)
         }
 
         setup->dac_task = nullptr;
-    }
-}
-
-bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, const size_t sensor_ndx, app_state* setup)
-{
-    try
-    {
-        if (setup->distance_sensors[sensor_ndx] != nullptr)
-        {
-            auto task_param = sensor_task_param {
-                .state = setup,
-                .index = sensor_ndx
-            };
-
-            TaskHandle_t task_handle;
-
-            *result_code = xTaskCreate(
-                distance_sensor_task,
-                task_name.c_str(),
-                DISTANCE_SENSOR_TASK_STACK_SIZE,
-                &task_param,
-                DISTANCE_SENSOR_TASK_PRIORITY,
-                &task_handle
-            );
-
-            setup->sensor_tasks[sensor_ndx] = std::make_unique<TaskHandle_t>(task_handle);
-
-            if (*result_code != pdPASS)
-            {
-                loge("setup", std::format("{} Failed to create task. Code: 0x{:04X}.",
-                    setup->distance_sensors[sensor_ndx]->get_log_key(),
-                    static_cast<int>(*result_code)));
-            }
-
-            return *result_code == pdPASS;
-        }
-
-        loge("setup", std::format("Cannot configure task for unconfigured distance sensor #{}.", sensor_ndx));
-        *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument
-
-        return false;
-    }
-    catch (std::exception& e)
-    {
-        loge("setup", std::format("{} An exception occurred while configuring task for distance sensor #{}: {}",
-            setup->distance_sensors[sensor_ndx] == nullptr? "[unconfigured sensor]" : setup->distance_sensors[sensor_ndx]->get_log_key(),
-            sensor_ndx,
-            e.what()));
-
-        *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument
-        return false;
     }
 }
 
@@ -342,3 +480,4 @@ bool try_create_dac_task(const std::string& task_name, BaseType_t* result_code, 
         return false;
     }
 }
+*/

@@ -17,10 +17,18 @@ struct dac_task_param
     app_state* state;
 };
 
+struct dac_write_task_param
+{
+    app_state* state;
+};
+
 [[noreturn]]
 void distance_sensor_task(void* task_param_pointer);
 
 [[noreturn]]
 void dac_task(void* task_param_pointer);
+
+[[noreturn]]
+void dac_write_task(void* task_param_pointer);
 
 #endif //AUDIO_CONTROLLER_TASKS_H
