@@ -76,27 +76,30 @@ namespace gp2y0e02b
 
         distance_sensor(const distance_sensor& other) = delete;
 
-        distance_sensor(distance_sensor&& other) noexcept
-            : handle(std::exchange(other.handle, nullptr)), timeout_ms(other.timeout_ms),
-              state(other.state), address(other.address)
-        {
-            log_key = make_log_key();
-        }
+        distance_sensor(distance_sensor&& other) = delete;
+
+        // distance_sensor(distance_sensor&& other) noexcept
+        //     : handle(std::exchange(other.handle, nullptr)), timeout_ms(other.timeout_ms),
+        //       state(other.state), address(other.address)
+        // {
+        //     log_key = make_log_key();
+        // }
 
         distance_sensor& operator=(const distance_sensor& other) = delete;
 
-        distance_sensor& operator=(distance_sensor&& other) noexcept
-        {
-            if (this == &other)
-                return *this;
-
-            std::swap(handle, other.handle);
-            timeout_ms = other.timeout_ms;
-            state = other.state;
-            address = other.address;
-            log_key = make_log_key();
-            return *this;
-        }
+        // distance_sensor& operator=(distance_sensor&& other) noexcept
+        // {
+        //     if (this == &other)
+        //         return *this;
+        //
+        //     std::swap(handle, other.handle);
+        //     timeout_ms = other.timeout_ms;
+        //     state = other.state;
+        //     address = other.address;
+        //     log_key = make_log_key();
+        //     return *this;
+        // }
+        distance_sensor& operator=(distance_sensor&& other) = delete;
 
         [[nodiscard]] int32_t get_timeout_ms() const { return timeout_ms; }
         void set_timeout(const int32_t timeout) { timeout_ms = timeout; }
@@ -225,7 +228,7 @@ namespace gp2y0e02b
                 return nullptr;
             }
 
-            return std::make_unique<distance_sensor>(distance_sensor(handle, addr, timeout_ms));
+            return std::make_unique<distance_sensor>(handle, addr, timeout_ms);
         }
 
         ~distance_sensor()

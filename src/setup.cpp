@@ -211,21 +211,6 @@ void init_dac_controller(app_state* setup)
                     dac_controller::LOG_KEY,
                     create_task_result));
             }
-
-            //Start DAC main task
-            if (setup_successful)
-            {
-                if (const auto dac_controller_start_result = setup->dac_ctrl->start();
-                    dac_controller_start_result != start_dac_controller_task_result::ERR)
-                {
-                    logi("setup", std::format("{} Successfully started DAC controller main task.", dac_controller::LOG_KEY));
-                }
-                else
-                {
-                    setup_successful = false;
-                    loge("setup", std::format("{} Failed to start DAC controller main task.", dac_controller::LOG_KEY));
-                }
-            }
         }
         else
         {
@@ -324,9 +309,9 @@ bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_
             *result_code = xTaskCreate(
                 dac_write_task,
                 task_name.c_str(),
-                DAC_TASK_STACK_SIZE,
+                DAC_WRITE_TASK_STACK_SIZE,
                 &task_param,
-                DAC_TASK_PRIORITY,
+                DAC_WRITE_TASK_PRIORITY,
                 &task_handle
             );
 

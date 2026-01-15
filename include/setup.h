@@ -18,6 +18,8 @@ static constexpr auto DISTANCE_SENSOR_TASK_PRIORITY = 1;
 static constexpr auto DISTANCE_SENSOR_TASK_STACK_SIZE = 0x1000;
 static constexpr auto DAC_TASK_PRIORITY = 1;
 static constexpr auto DAC_TASK_STACK_SIZE = 0x1000;
+static constexpr auto DAC_WRITE_TASK_PRIORITY = 2;
+static constexpr auto DAC_WRITE_TASK_STACK_SIZE = 0x8192;
 
 static constexpr float PIECEWISE_FREQUENCY_BREAKPOINTS[PIECEWISE_FREQUENCY_BREAKPOINT_COUNT] = {
     0.8,

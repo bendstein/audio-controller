@@ -26,12 +26,8 @@ void distance_sensor_task(void* task_param_pointer)
 
         const auto [setup_data, sensor_index] = *static_cast<sensor_task_param*>(task_param_pointer);
 
-        const auto maybe_sensor = &setup_data->distance_sensors[sensor_index];
-
-        if (maybe_sensor == nullptr || *maybe_sensor == nullptr)
+        if (setup_data->distance_sensors[sensor_index] == nullptr)
             throw std::invalid_argument("No sensor was provided to distance_sensor_task.");
-
-        auto& sensor = **maybe_sensor;
 
         for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
         {
@@ -39,7 +35,7 @@ void distance_sensor_task(void* task_param_pointer)
             {
                 uint8_t distance;
 
-                if (sensor.try_update_distance(&distance))
+                if (setup_data->distance_sensors[sensor_index]->try_update_distance(&distance))
                 { }
 
                 vTaskDelay(10 / portTICK_PERIOD_MS);
@@ -47,7 +43,7 @@ void distance_sensor_task(void* task_param_pointer)
             catch (std::exception& e)
             {
                 loge(NAMEOF(distance_sensor_task), std::format("{} An exception occurred during distance sensor task (n = {}): {}",
-                    sensor.get_log_key(),
+                    setup_data->distance_sensors[sensor_index]->get_log_key(),
                     i,
                     e.what()));
             }
@@ -76,13 +72,33 @@ void dac_write_task(void* task_param_pointer)
 
         auto& dac_controller = *setup_data->dac_ctrl;
 
+        for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
+        {
+            try
+            {
+                const auto note = static_cast<musical_note>((i / 2) % static_cast<uint8_t>(musical_note::MAX));
+                const auto freq = tone(note, 4).frequency_hz();
+
+                dac_controller.accept_frequencies(&freq, 1);
+            }
+            catch (std::exception& e)
+            {
+                loge(NAMEOF(dac_write_task), std::format("{} An exception occurred during DAC write task: {}",
+                    dac_controller::LOG_KEY,
+                    e.what()));
+            }
+
+            vTaskDelay(10 / portTICK_PERIOD_MS);
+        }
+
+        /*
         //Collect the current frequencies corresponding to each sensor,
         //and send them to the DAC controller
         do
         {
             try
             {
-                //Get tone as frequency in MHz for each sensor, then determine frequency at current time
+                //Get tone as frequency in Hz for each sensor, then give to DAC controller
                 float tones[SENSORS_COUNT] = {};
                 uint8_t tone_count = 0;
 
@@ -97,24 +113,29 @@ void dac_write_task(void* task_param_pointer)
                         const auto current_max_distance = setup_data->distance_sensors[j]->get_distance_shift_value();
 
                         const auto ratio = static_cast<float>(current_distance) / static_cast<float>(current_max_distance);
-                        const auto tone = piecewise_frequency_range_breakpoint::get_tone(sensor_frequency_mappings, PIECEWISE_FREQUENCY_BREAKPOINT_COUNT, ratio);
+                        const auto tone = piecewise_frequency_range_breakpoint::get_tone_hz(
+                            sensor_frequency_mappings,
+                            PIECEWISE_FREQUENCY_BREAKPOINT_COUNT,
+                            ratio);
                         tones[tone_count++] = tone;
+
+                        // logi(NAMEOF(dac_write_task), std::format("dist: {}, shift: {}, ratio: {}, tone: {}",
+                        //     current_distance, current_max_distance, ratio, tone));
                     }
                 }
 
                 dac_controller.accept_frequencies(tones, tone_count);
-
-                vTaskDelay(10 / portTICK_PERIOD_US);
             }
             catch (std::exception& e)
             {
-                loge(NAMEOF(dac_task), std::format("{} An exception occurred during DAC write task: {}",
+                loge(NAMEOF(dac_write_task), std::format("{} An exception occurred during DAC write task: {}",
                     dac_controller::LOG_KEY,
                     e.what()));
             }
 
-            vTaskDelay(100 / portTICK_PERIOD_MS);
+            vTaskDelay(10 / portTICK_PERIOD_MS);
         } while (true);
+        */
     }
     catch (std::exception& e)
     {

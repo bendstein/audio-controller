@@ -20,6 +20,7 @@ protected:
 public:
     frequency_range() = default;
     virtual ~frequency_range() = default;
+    [[nodiscard]] float get_tone_hz(const float value) const { return get_tone(value) * US_PER_SECOND; }
     [[nodiscard]] virtual std::unique_ptr<frequency_range> clone() const = 0;
     [[nodiscard]] virtual float get_tone(float value) const = 0;
 };
@@ -43,8 +44,8 @@ class continuous_frequency_range final : public frequency_range
     const tone max {};
     const scale_fn scale;
 public:
-    continuous_frequency_range(const tone& min, const tone& max, const scale_fn& scale)
-        : min(min), max(max), scale(scale) {}
+    continuous_frequency_range(const tone& min, const tone& max, scale_fn  scale)
+        : min(min), max(max), scale(std::move(scale)) {}
 
     [[nodiscard]] std::unique_ptr<frequency_range> clone() const override { return std::make_unique<continuous_frequency_range>(*this); }
 
@@ -87,6 +88,10 @@ public:
         : breakpoint(breakpoint), range(range.clone()) {}
 
     [[nodiscard]] static float get_tone(const piecewise_frequency_range_breakpoint breakpoints[], size_t breakpoints_len, float value);
+    [[nodiscard]] static float get_tone_hz(const piecewise_frequency_range_breakpoint breakpoints[], const size_t breakpoints_len, const float value)
+    {
+        return get_tone(breakpoints, breakpoints_len, value) * US_PER_SECOND;
+    }
 };
 
 #endif //AUDIO_CONTROLLER_FREQUENCY_RANGE_H

@@ -39,6 +39,10 @@ float piecewise_frequency_range_breakpoint::get_tone(const piecewise_frequency_r
                 //Adj value to be ratio between previous and current breakpoint so
                 //that the child function uses its full range
                 const auto adj_value = (value - previous_breakpoint) / (breakpoint - previous_breakpoint);
+
+                // logi("get_tone", std::format("val: {}, bp: {}, bp prev: {}, adj: {}, child: 0x{:08X}",
+                //     value, breakpoint, previous_breakpoint, adj_value, reinterpret_cast<uintptr_t>(child_range)));
+
                 return child_range == nullptr? 0 : child_range->get_tone(adj_value);
             }
 
