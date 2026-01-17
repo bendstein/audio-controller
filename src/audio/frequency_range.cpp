@@ -3,24 +3,21 @@
 //
 #include "audio/frequency_range.h"
 
-float continuous_frequency_range::get_tone(const float value) const
+tone continuous_frequency_range::get_tone(const float value) const
 {
-    const auto min_freq = min.frequency_megahz();
-    const auto max_freq = max.frequency_megahz();
-
-    if (min_freq == max_freq) //Single frequency
-        return min_freq;
+    if (min.is_equivalent_to(max)) //Single frequency
+        return min;
 
     //Clamp value to range
     if (value <= 0)
-        return min_freq;
+        return min;
     if (value >= 1)
-        return max_freq;
+        return max;
 
     return map_to_range(value);
 }
 
-float piecewise_frequency_range_breakpoint::get_tone(const piecewise_frequency_range_breakpoint breakpoints[], const size_t breakpoints_len, const float value)
+tone piecewise_frequency_range_breakpoint::get_tone(const piecewise_frequency_range_breakpoint breakpoints[], const size_t breakpoints_len, const float value)
 {
     if (breakpoints_len > 0 && breakpoints != nullptr)
     {
@@ -43,12 +40,12 @@ float piecewise_frequency_range_breakpoint::get_tone(const piecewise_frequency_r
                 // logi("get_tone", std::format("val: {}, bp: {}, bp prev: {}, adj: {}, child: 0x{:08X}",
                 //     value, breakpoint, previous_breakpoint, adj_value, reinterpret_cast<uintptr_t>(child_range)));
 
-                return child_range == nullptr? 0 : child_range->get_tone(adj_value);
+                return child_range == nullptr? *tone::dft() : child_range->get_tone(adj_value);
             }
 
             previous_breakpoint = breakpoint;
         }
     }
 
-    return 0; //Invalid set of breakpoints
+    return *tone::dft(); //Invalid set of breakpoints
 }

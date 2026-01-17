@@ -24,22 +24,25 @@ public:
     static constexpr std::string LOG_KEY = "[DAC Ctrl]";
 private:
     static constexpr int DAC_CFG_DESC_NUM = 8;
-    static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 11;
-    static constexpr int DAC_CFG_SAMPLE_RATE = 1 << 14;
+    static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 10;
+    static constexpr int DAC_CFG_SAMPLE_RATE = 1 << 16;
     static constexpr int DAC_CFG_OFFSET = 0;
 
     static constexpr size_t DAC_DOUBLE_BUFFER_SIZE = 1 << 13;
     static constexpr float DAC_DOUBLE_BUFFER_TIME_SECONDS = static_cast<float>(DAC_DOUBLE_BUFFER_SIZE) / DAC_CFG_SAMPLE_RATE;
-    static constexpr size_t MOVING_AVERAGE_LEN_BETWEEN_BUFFERS = 4;
-    static constexpr size_t MOVING_AVERAGE_LEN = 4;
+    static constexpr size_t MOVING_AVERAGE_LEN = 6;
+
+    static constexpr uint8_t DAC_ZERO_EPS = 5;
 
     dac_continuous_handle_t handle;
+    size_t active_buffer_len = 0;
     uint8_t* active_buffer;
     uint8_t* working_buffer;
 
-    void swap_buffers()
+    void swap_buffers(const size_t working_buffer_len)
     {
         std::swap(active_buffer, working_buffer);
+        active_buffer_len = working_buffer_len;
     }
 public:
 
@@ -58,7 +61,7 @@ public:
 
     dac_controller& operator=(dac_controller&& other) = delete;
 
-    void accept_frequencies(const float frequencies[], size_t size)
+    void accept_tones(const tone tones[], const size_t size)
     {
         static_assert(DAC_DOUBLE_BUFFER_SIZE < std::numeric_limits<float>::max());
 
@@ -74,7 +77,7 @@ public:
 
             for (size_t f = 0; f < size; f++)
             {
-                if (const auto freq = frequencies[f]; freq > 0)
+                if (const auto freq = tones[f].frequency_hz(); freq > 0)
                 {
                     sum += (1.f + sinf(2.f * static_cast<float>(M_PI) * static_cast<float>(t) * freq)) / 2.f;
                     freq_used++;
@@ -97,28 +100,22 @@ public:
 
             //Apply moving average filter to smooth data. Treat the active buffer as coming before i = 0
             //for the purposes of this in order to smooth between buffers as well.
-            //If near the start of the buffer, use a larger moving average window to help prevent large
-            //breaks between buffers
             int moving_average_sum = next_value;
             int moving_average_count = 1;
 
-            const auto moving_average_len = i > MOVING_AVERAGE_LEN
-                ? MOVING_AVERAGE_LEN
-                : MOVING_AVERAGE_LEN_BETWEEN_BUFFERS;
-
-            for (size_t j = moving_average_len; j > 0; j--)
+            for (size_t j = MOVING_AVERAGE_LEN; j > 0; j--)
             {
                 if (j <= i) //Within this buffer
                 {
                     moving_average_sum += working_buffer[i - j];
                     moving_average_count++;
                 }
-                else //From end of active buffer
+                else if (active_buffer_len > 0) //From end of active buffer
                 {
                     if (const auto ndx_from_end = j - i;
-                        ndx_from_end <= DAC_DOUBLE_BUFFER_SIZE) //Must not go past start of previous buffer
+                        ndx_from_end <= active_buffer_len) //Must not go past start of previous buffer
                     {
-                        moving_average_sum += active_buffer[DAC_DOUBLE_BUFFER_SIZE - ndx_from_end];
+                        moving_average_sum += active_buffer[active_buffer_len - ndx_from_end];
                         moving_average_count++;
                     }
                 }
@@ -127,24 +124,46 @@ public:
             working_buffer[i] = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round((1. * moving_average_sum) / moving_average_count)), 0, 0xFF));
         }
 
+        //Find the value closest to the end that is within epsilon of the
+        //first value, and use that as the end of the buffer, to help
+        //with continuity on wrap.
+        const auto first_value = working_buffer[0];
+        size_t working_buffer_len = DAC_DOUBLE_BUFFER_SIZE;
+        for (size_t i = DAC_DOUBLE_BUFFER_SIZE - 1; i > 0; i--)
+        {
+            const auto current = working_buffer[i];
+            if (const auto diff = first_value > current? (first_value - current) : (current - first_value);
+                diff <= DAC_ZERO_EPS)
+            {
+                working_buffer_len = i + 1;
+                break;
+            }
+        }
+
         //Swap buffers and write to DAC
-        swap_buffers();
+        swap_buffers(working_buffer_len);
+
+        FVERBOSE("First value: 0x{:02X}, Len: {}, Last Value: 0x{:02X}, True Last Value: 0x{:02X}",
+            first_value,
+            active_buffer_len,
+            active_buffer[active_buffer_len - 1],
+            active_buffer[DAC_DOUBLE_BUFFER_SIZE - 1]);
 
         if (const auto dac_write_result = dac_continuous_write_cyclically(
             handle,
             active_buffer,
-            DAC_DOUBLE_BUFFER_SIZE,
+            active_buffer_len,
             nullptr
         ); dac_write_result != ESP_OK)
         {
-            loge(NAMEOF(dac_controller), std::format("{} Failed to write to DAC. [0x{:04X}] {}",
-                LOG_KEY, dac_write_result, esp_err_to_name(dac_write_result)));
+            FLOGE("{} Failed to write to DAC. [0x{:04X}] {}",
+                LOG_KEY, dac_write_result, esp_err_to_name(dac_write_result));
         }
     }
 
     [[nodiscard]] static std::unique_ptr<dac_controller> try_create(const dac_channel_mask_t channels = DAC_CHANNEL_MASK_ALL, const dac_continuous_channel_mode_t channel_mode = DAC_CHANNEL_MODE_SIMUL)
     {
-        logi(NAMEOF(dac_controller), std::format("{} Creating DAC controller.", LOG_KEY));
+        FLOGI("{} Creating DAC controller.", LOG_KEY);
 
         dac_continuous_handle_t handle;
 
@@ -161,8 +180,8 @@ public:
         if (const auto alloc_result = dac_continuous_new_channels(&cfg, &handle);
             alloc_result != ESP_OK)
         {
-            loge(NAMEOF(dac_controller), std::format("{} Failed to allocate DAC channels. [0x{:04X}] {}",
-                LOG_KEY, alloc_result, esp_err_to_name(alloc_result)));
+            FLOGE("{} Failed to allocate DAC channels. [0x{:04X}] {}",
+                LOG_KEY, alloc_result, esp_err_to_name(alloc_result));
 
             return nullptr;
         }
@@ -170,8 +189,8 @@ public:
         if (const auto enable_result = dac_continuous_enable(handle);
             enable_result != ESP_OK)
         {
-            loge(NAMEOF(dac_controller), std::format("{} Failed to enable DAC channels. [0x{:04X}] {}",
-                LOG_KEY, enable_result, esp_err_to_name(enable_result)));
+            FLOGE("{} Failed to enable DAC channels. [0x{:04X}] {}",
+                LOG_KEY, enable_result, esp_err_to_name(enable_result));
 
             return nullptr;
         }
@@ -186,24 +205,24 @@ public:
         {
             try
             {
-                logi(NAMEOF(~dac_controller), std::format("{} Removing DAC channel handle 0x{:08X}.",
+                FLOGI("{} Removing DAC channel handle 0x{:08X}.",
                      LOG_KEY,
-                     reinterpret_cast<uintptr_t>(handle)));
+                     reinterpret_cast<uintptr_t>(handle));
 
                 if (const auto remove_dac_channel_result = dac_continuous_del_channels(handle);
                     remove_dac_channel_result != ESP_OK)
                 {
-                    loge(NAMEOF(~dac_controller), std::format("{} Failed to remove DAC channel handle 0x{:08X}. [0x{:04X}] {}",
+                    FLOGE("{} Failed to remove DAC channel handle 0x{:08X}. [0x{:04X}] {}",
                         LOG_KEY,
                         reinterpret_cast<uintptr_t>(handle),
                         remove_dac_channel_result,
-                        esp_err_to_name(remove_dac_channel_result)));
+                        esp_err_to_name(remove_dac_channel_result));
                 }
             }
             catch (std::exception& e)
             {
-                loge(NAMEOF(~dac_controller), std::format("{} An exception occurred while removing DAC channel handle 0x{:08X}: {}",
-                    LOG_KEY, reinterpret_cast<uintptr_t>(handle), e.what()));
+                FLOGE("{} An exception occurred while removing DAC channel handle 0x{:08X}: {}",
+                    LOG_KEY, reinterpret_cast<uintptr_t>(handle), e.what());
             }
         }
 

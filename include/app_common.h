@@ -34,8 +34,8 @@ constexpr uint8_t LOW = 0;
 constexpr uint8_t HIGH = 0;
 
 constexpr size_t SENSORS_COUNT = 1;
-constexpr size_t PIECEWISE_FREQUENCY_BREAKPOINT_COUNT = 2;
-constexpr size_t I2C_DEVICE_CAPACITY = SENSORS_COUNT + 1;
+constexpr size_t PIECEWISE_FREQUENCY_BREAKPOINT_COUNT = 3;
+constexpr size_t I2C_DEVICE_CAPACITY = SENSORS_COUNT;
 
 //Doesn't need to be a macro, but I'm doing it to match portTICK_PERIOD_MS being a macro
 #define portTICK_PERIOD_US ((TickType_t)US_PER_MS / portTICK_PERIOD_MS)
@@ -157,18 +157,31 @@ inline void loge(const std::string& tag, const std::string& message)
 {
     log_message(tag, message, ESP_LOG_ERROR);
 }
-inline void log(const std::string& tag, const std::string& message)
-{
-    logi(tag, message);
-}
+
+#define LOGV(message) logv(__FILE_NAME__, message)
+#define LOGI(message) logi(__FILE_NAME__, message)
+#define LOGD(message) logd(__FILE_NAME__, message)
+#define LOGW(message) logw(__FILE_NAME__, message)
+#define LOGE(message) loge(__FILE_NAME__, message)
+#define LOGEX(ex) loge(__FILE_NAME__, ex.what())
+
+#define FLOGV(message, ...) LOGV(std::format(message __VA_OPT__(,) __VA_ARGS__))
+#define FLOGI(message, ...) LOGI(std::format(message __VA_OPT__(,) __VA_ARGS__))
+#define FLOGD(message, ...) LOGD(std::format(message __VA_OPT__(,) __VA_ARGS__))
+#define FLOGW(message, ...) LOGW(std::format(message __VA_OPT__(,) __VA_ARGS__))
+#define FLOGE(message, ...) LOGE(std::format(message __VA_OPT__(,) __VA_ARGS__))
 
 //Only verbose log if enabled
 #ifdef LOG_VERBOSE
-#define VERBOSE(tag, message) logv(LOG_VERBOSE_TAG, std::format("[{}] {}", tag, message))
-#define VERBOSE_LB(tag, message) logv(LOG_VERBOSE_TAG, std::format("[{}]\r\n{}", tag, message))
+#define VERBOSE(message) logv(LOG_VERBOSE_TAG, std::format("({}:{}) {}", __FILE_NAME__, __LINE__, message))
+#define VERBOSE_LB(message) logv(LOG_VERBOSE_TAG, std::format("({}:{})\r\n{}", __FILE_NAME__, __LINE__, message))
+#define FVERBOSE(message, ...) logv(LOG_VERBOSE_TAG, std::format("({}:{}) {}", __FILE_NAME__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
+#define FVERBOSE_LB(message, ...) logv(LOG_VERBOSE_TAG, std::format("({}:{})\r\n{}", __FILE_NAME__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
 #else
-#define VERBOSE(tag, message) {}
-#define VERBOSE_LB(tag, message) {}
+#define VERBOSE(message) {}
+#define VERBOSE_LB(message) {}
+#define FVERBOSE(message, ...) {}
+#define FVERBOSE_LB(message, ...) {}
 #endif
 
 #endif //AUDIO_CONTROLLER_COMMON_H

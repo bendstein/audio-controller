@@ -12,11 +12,6 @@ struct sensor_task_param
     size_t index;
 };
 
-struct dac_task_param
-{
-    app_state* state;
-};
-
 struct dac_write_task_param
 {
     app_state* state;
@@ -24,9 +19,6 @@ struct dac_write_task_param
 
 [[noreturn]]
 void distance_sensor_task(void* task_param_pointer);
-
-[[noreturn]]
-void dac_task(void* task_param_pointer);
 
 [[noreturn]]
 void dac_write_task(void* task_param_pointer);

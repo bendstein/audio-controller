@@ -35,11 +35,11 @@ inline void log_system_state_task(void*)
                 vTaskDelay(5000 / portTICK_PERIOD_MS);
 
                 vTaskList(list_tasks_buffer);
-                VERBOSE_LB(NAMEOF(log_system_state_task), list_tasks_buffer);
+                VERBOSE_LB(list_tasks_buffer);
             }
             catch (std::exception &e)
             {
-                loge(NAMEOF(log_system_state_task), e.what());
+                LOGEX(e);
             }
         }
         while (true);

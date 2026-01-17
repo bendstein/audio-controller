@@ -20,9 +20,8 @@ protected:
 public:
     frequency_range() = default;
     virtual ~frequency_range() = default;
-    [[nodiscard]] float get_tone_hz(const float value) const { return get_tone(value) * US_PER_SECOND; }
     [[nodiscard]] virtual std::unique_ptr<frequency_range> clone() const = 0;
-    [[nodiscard]] virtual float get_tone(float value) const = 0;
+    [[nodiscard]] virtual tone get_tone(float value) const = 0;
 };
 
 class single_frequency_range final : public frequency_range
@@ -32,7 +31,7 @@ public:
     explicit single_frequency_range(const tone& t) : t(t) {}
 
     [[nodiscard]] std::unique_ptr<frequency_range> clone() const override { return std::make_unique<single_frequency_range>(*this); }
-    [[nodiscard]] float get_tone(float value) const override { return t.frequency_megahz(); }
+    [[nodiscard]] tone get_tone(float value) const override { return t; }
 };
 
 class continuous_frequency_range final : public frequency_range
@@ -49,14 +48,14 @@ public:
 
     [[nodiscard]] std::unique_ptr<frequency_range> clone() const override { return std::make_unique<continuous_frequency_range>(*this); }
 
-    [[nodiscard]] float get_tone(float value) const override;
+    [[nodiscard]] tone get_tone(float value) const override;
 
-    [[nodiscard]] float map_to_range(const float value) const
+    [[nodiscard]] tone map_to_range(const float value) const
     {
         const auto min_freq = min.frequency_hz();
         const auto max_freq = max.frequency_hz();
         const auto value_scaled = scale(value);
-        return min_freq + value_scaled * (max_freq - min_freq);
+        return tone(min_freq + value_scaled * (max_freq - min_freq));
     }
 
     static float scale_fn_linear(const float value) { return value; }
@@ -87,11 +86,7 @@ public:
     piecewise_frequency_range_breakpoint(const float breakpoint, const frequency_range& range)
         : breakpoint(breakpoint), range(range.clone()) {}
 
-    [[nodiscard]] static float get_tone(const piecewise_frequency_range_breakpoint breakpoints[], size_t breakpoints_len, float value);
-    [[nodiscard]] static float get_tone_hz(const piecewise_frequency_range_breakpoint breakpoints[], const size_t breakpoints_len, const float value)
-    {
-        return get_tone(breakpoints, breakpoints_len, value) * US_PER_SECOND;
-    }
+    [[nodiscard]] static tone get_tone(const piecewise_frequency_range_breakpoint breakpoints[], size_t breakpoints_len, float value);
 };
 
 #endif //AUDIO_CONTROLLER_FREQUENCY_RANGE_H

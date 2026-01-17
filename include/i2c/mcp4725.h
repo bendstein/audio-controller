@@ -122,31 +122,31 @@ namespace mcp4725
             {
                 try
                 {
-                    logi(NAMEOF(~dac), std::format("{} Removing device 0x{:08X} from bus.",
+                    FLOGI("{} Removing device 0x{:08X} from bus.",
                          log_key,
-                         reinterpret_cast<uintptr_t>(handle)));
+                         reinterpret_cast<uintptr_t>(handle));
 
                     if (const auto rm_device_result = i2c_master_bus_rm_device(handle);
                         rm_device_result != ESP_OK)
                     {
-                        loge(NAMEOF(~dac), std::format("{} Failed to remove device 0x{:08X} from bus. [0x{:04X}] {}",
+                        FLOGE("{} Failed to remove device 0x{:08X} from bus. [0x{:04X}] {}",
                             log_key,
                             reinterpret_cast<uintptr_t>(handle),
                             rm_device_result,
-                            esp_err_to_name(rm_device_result)));
+                            esp_err_to_name(rm_device_result));
                     }
                 }
                 catch (std::exception& e)
                 {
-                    loge(NAMEOF(~dac), std::format("{} An exception occurred while removing device 0x{:08X} from bus: {}",
-                        log_key, reinterpret_cast<uintptr_t>(handle), e.what()));
+                    FLOGE("{} An exception occurred while removing device 0x{:08X} from bus: {}",
+                        log_key, reinterpret_cast<uintptr_t>(handle), e.what());
                 }
             }
         }
 
         [[nodiscard]] static std::unique_ptr<dac> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
         {
-            logi(NAMEOF(dac), std::format("[DAC 0x{:02X}] Creating device on bus.", addr));
+            FLOGI("[DAC 0x{:02X}] Creating device on bus.", addr);
 
             const i2c_device_config_t device_cfg = {
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -162,8 +162,8 @@ namespace mcp4725
 
             if (const auto add_to_bus_result = i2c_master_bus_add_device(bus, &device_cfg, &handle); add_to_bus_result != ESP_OK)
             {
-                loge(NAMEOF(dac), std::format("[DAC 0x{:02X}] Failed to create device. [0x{:04X}] {}",
-                    addr, add_to_bus_result, esp_err_to_name(add_to_bus_result)));
+                FLOGE("[DAC 0x{:02X}] Failed to create device. [0x{:04X}] {}",
+                    addr, add_to_bus_result, esp_err_to_name(add_to_bus_result));
 
                 return nullptr;
             }

@@ -10,6 +10,7 @@
 #include "app_common.h"
 
 constexpr float FREQUENCY_C0 = 16.35f; //Frequency, in hz, for C in octave 0
+constexpr float TONE_HZ_EPS = 0.1; //Consider tones within this amount to be equivalent
 
 /**
  * Enum of all notes in the chromatic scale
@@ -73,10 +74,21 @@ struct tone {
     tone_value value;
 
     tone() : type(tone_type::frequency) {}
-    tone(const tone& other)
+    tone(const tone& other) : type(other.type), value(tone_value(other.value)) {}
+    tone& operator=(const tone& other)
     {
         type = other.type;
         value = tone_value(other.value);
+        return *this;
+    }
+
+    tone(tone&& other) noexcept : type(other.type), value(tone_value(other.value)) {}
+
+    tone& operator=(tone&& other) noexcept
+    {
+        type = other.type;
+        value = tone_value(other.value);
+        return *this;
     }
 
     explicit tone(const float frequency_hz) : type(tone_type::frequency), value(frequency_hz) { }
@@ -100,10 +112,15 @@ struct tone {
         return frequency_hz() / US_PER_SECOND;
     }
 
-    /**
-     * @return Const reference to a default tone w/ frequency 0hz
-     * @remark rv is to a static to prevent allocation each time
-     */
+    [[nodiscard]]
+    bool is_equivalent_to(const tone& other) const
+    {
+        return std::abs(frequency_hz() - other.frequency_hz()) <= TONE_HZ_EPS;
+    }
+
+    [[nodiscard]]
+    bool is_zero() const { return is_equivalent_to(*dft()); }
+
     static const tone* dft() {
         static auto default_tone = tone();
         return &default_tone;

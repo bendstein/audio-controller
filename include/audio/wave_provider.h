@@ -8,19 +8,21 @@
 #include <cstddef>
 #include <cassert>
 
+#include "notes.h"
+
 class wave_provider
 {
 public:
     wave_provider() = default;
     virtual ~wave_provider() = default;
-    [[nodiscard]] virtual float wave(long long time_us, const float tones[], size_t tones_length) const;
+    [[nodiscard]] virtual float wave(long long time_us, const tone tones[], size_t tones_length) const;
 };
 
 class sin_wave_provider final : public wave_provider
 {
 public:
     sin_wave_provider() = default;
-    float wave(long long time_us, const float tones[], size_t tones_length) const override;
+    float wave(long long time_us, const tone tones[], size_t tones_length) const override;
 
     ~sin_wave_provider() override = default;
 };
@@ -37,7 +39,7 @@ public:
 
     [[nodiscard]] float get_duty_cycle() const { return duty_cycle; }
 
-    float wave(long long time_us, const float tones[], size_t tones_length) const override;
+    float wave(long long time_us, const tone tones[], size_t tones_length) const override;
 
     ~square_wave_provider() override = default;
 };
@@ -54,7 +56,7 @@ public:
 
     [[nodiscard]] float get_duty_cycle() const { return duty_cycle; }
 
-    float wave(long long time_us, const float tones[], size_t tones_length) const override;
+    float wave(long long time_us, const tone tones[], size_t tones_length) const override;
 
     ~sawtooth_wave_provider() override = default;
 };
@@ -71,7 +73,7 @@ public:
 
     [[nodiscard]] float get_duty_cycle() const { return duty_cycle; }
 
-    float wave(long long time_us, const float tones[], size_t tones_length) const override;
+    float wave(long long time_us, const tone tones[], size_t tones_length) const override;
 
     ~triangle_wave_provider() override = default;
 };

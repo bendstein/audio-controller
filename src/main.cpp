@@ -22,40 +22,22 @@ void app_main()
 
     try
     {
-        // const auto setup_data = do_setup();
-
         TaskHandle_t log_tasks_task = nullptr;
 
         if (FLAG_VERBOSE)
         {
-            VERBOSE(NAMEOF(app_main), "Creating log_tasks_task.");
+            VERBOSE("Creating log_tasks_task.");
 
             if (const auto create_log_tasks_task_result = xTaskCreate(log_system_state_task, "log_sys_state",
                 4096,  nullptr, 1, &log_tasks_task); create_log_tasks_task_result != pdPASS)
             {
-                loge(NAMEOF(app_main), std::format("Failed to create log_tasks_task. (0x{:04X})", create_log_tasks_task_result));
+                FLOGE("Failed to create log_tasks_task. (0x{:04X})", create_log_tasks_task_result);
             }
 
-            VERBOSE(NAMEOF(app_main), "Successfully created log_tasks_task.");
+            VERBOSE("Successfully created log_tasks_task.");
         }
 
         const auto state = do_setup();
-
-        // const auto bus = init_i2c_bus(
-        //     I2C_BUS_PORT_0,
-        //     I2C_PIN_SDA_0,
-        //     I2C_PIN_SCL_0
-        // );
-        //
-        // if (const auto maybe_sensor = gp2y0e02b::distance_sensor::try_create_on_bus(bus, 0x80, 60000);
-        //     maybe_sensor == nullptr)
-        // {
-        //     loge(NAMEOF(app_main), "Failed to create sensor on bus.");
-        // }
-        // else
-        // {
-        //     logi(NAMEOF(app_main), maybe_sensor->get_log_key());
-        // }
 
         for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
         {
@@ -64,7 +46,7 @@ void app_main()
     }
     catch (const std::exception& e)
     {
-        loge(NAMEOF(app_main), std::format("An exception occurred: {}", e.what()));
+        LOGEX(e);
     }
 
     while (true)
@@ -87,8 +69,7 @@ void configure_gp2y0e02b()
     }
     catch (const std::exception& e)
     {
-        loge(NAMEOF(configure_gp2y0e02b), std::format("An exception occurred while configuring sensor address: {}",
-            e.what()));
+        FLOGE("An exception occurred while configuring sensor address: {}", e.what());
     }
 
     while (true)

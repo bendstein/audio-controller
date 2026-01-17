@@ -5,16 +5,16 @@
 
 #include <cmath>
 
-float wave_provider::wave(const long long time_us, const float tones[], const size_t tones_length) const { return 0; }
+float wave_provider::wave(const long long time_us, const tone tones[], const size_t tones_length) const { return 0; }
 
-float sin_wave_provider::wave(const long long time_us, const float tones[], size_t const tones_length) const {
+float sin_wave_provider::wave(const long long time_us, const tone tones[], size_t const tones_length) const {
     float sum = 0;
     size_t tones_used = 0;
 
     //Sum up component sine waves at this time
     for(auto i = 0; i < tones_length; i++) {
         //Skip frequencies of 0
-        if(const auto frequency = tones[i]; frequency > 0) {
+        if(const auto frequency = tones[i].frequency_megahz(); frequency > 0) {
             //Put time_us within period to handle long long.
             //Can narrow type to float since frequency is a float, and result of
             //modulus should never exceed it.
@@ -39,13 +39,13 @@ float sin_wave_provider::wave(const long long time_us, const float tones[], size
     return sum / static_cast<float>(tones_used);
 }
 
-float square_wave_provider::wave(const long long time_us, const float tones[], const size_t tones_length) const {
+float square_wave_provider::wave(const long long time_us, const tone tones[], const size_t tones_length) const {
     unsigned sum = 0;
     size_t tones_used = 0;
 
     for(auto i = 0; i < tones_length; i++) {
         //Skip frequencies of 0
-        if(const auto frequency = tones[i]; frequency > 0) {
+        if(const auto frequency = tones[i].frequency_megahz(); frequency > 0) {
             //Put time_us within period to handle long long.
             //Can narrow type to float since frequency is a float, and result of
             //modulus should never exceed it.
@@ -72,14 +72,14 @@ float square_wave_provider::wave(const long long time_us, const float tones[], c
     return static_cast<float>(result);
 }
 
-float sawtooth_wave_provider::wave(const long long time_us, const float tones[], const size_t tones_length) const {
+float sawtooth_wave_provider::wave(const long long time_us, const tone tones[], const size_t tones_length) const {
     float sum = 0;
     size_t tones_used = 0;
 
     //Sum up component square waves at this time
     for(auto i = 0; i < tones_length; i++) {
         //Skip frequencies of 0
-        if(const auto frequency = tones[i]; frequency > 0) {
+        if(const auto frequency = tones[i].frequency_megahz(); frequency > 0) {
             //Put time_us within period to handle long long.
             //Can narrow type to float since frequency is a float, and result of
             //modulus should never exceed it.
@@ -107,14 +107,14 @@ float sawtooth_wave_provider::wave(const long long time_us, const float tones[],
     return sum / static_cast<float>(tones_used);
 }
 
-float triangle_wave_provider::wave(const long long time_us, const float tones[], const size_t tones_length) const {
+float triangle_wave_provider::wave(const long long time_us, const tone tones[], const size_t tones_length) const {
     float sum = 0;
     size_t tones_used = 0;
 
     //Sum up component square waves at this time
     for(auto i = 0; i < tones_length; i++) {
         //Skip frequencies of 0
-        if(const auto frequency = tones[i]; frequency > 0) {
+        if(const auto frequency = tones[i].frequency_megahz(); frequency > 0) {
             //Put time_us within period to handle long long.
             //Can narrow type to float since frequency is a float, and result of
             //modulus should never exceed it.

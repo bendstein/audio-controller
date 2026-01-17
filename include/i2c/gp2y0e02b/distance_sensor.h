@@ -211,7 +211,7 @@ namespace gp2y0e02b
             const i2c_device_config_t device_cfg = {
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
                 .device_address = static_cast<uint8_t>(addr >> 1),
-                .scl_speed_hz = I2C_FAST_HZ,
+                .scl_speed_hz = I2C_VERY_FAST_HZ,
                 .scl_wait_us = I2C_DEV_SCL_WAIT_US,
                 .flags = {
                     .disable_ack_check = false
@@ -222,8 +222,8 @@ namespace gp2y0e02b
 
             if (const auto add_to_bus_result = i2c_master_bus_add_device(bus, &device_cfg, &handle); add_to_bus_result != ESP_OK)
             {
-                loge(NAMEOF(distance_sensor), std::format("[distance sensor 0x{:02X}] Failed to create device. [0x{:04X}] {}",
-                    addr, add_to_bus_result, esp_err_to_name(add_to_bus_result)));
+                FLOGE("[distance sensor 0x{:02X}] Failed to create device. [0x{:04X}] {}",
+                    addr, add_to_bus_result, esp_err_to_name(add_to_bus_result));
 
                 return nullptr;
             }
@@ -238,24 +238,24 @@ namespace gp2y0e02b
             {
                 try
                 {
-                    loge(NAMEOF(~distance_sensor), std::format("{} Removing device 0x{:08X} from bus.",
+                    FLOGE("{} Removing device 0x{:08X} from bus.",
                          log_key,
-                         reinterpret_cast<uintptr_t>(handle)));
+                         reinterpret_cast<uintptr_t>(handle));
 
                     if (const auto rm_device_result = i2c_master_bus_rm_device(handle);
                         rm_device_result != ESP_OK)
                     {
-                        loge(NAMEOF(~distance_sensor), std::format("{} Failed to remove device 0x{:08X} from bus. [0x{:04X}] {}",
+                        FLOGE("{} Failed to remove device 0x{:08X} from bus. [0x{:04X}] {}",
                             log_key,
                             reinterpret_cast<uintptr_t>(handle),
                             rm_device_result,
-                            esp_err_to_name(rm_device_result)));
+                            esp_err_to_name(rm_device_result));
                     }
                 }
                 catch (std::exception& e)
                 {
-                    loge(NAMEOF(~distance_sensor), std::format("{} An exception occurred while removing device 0x{:08X} from bus: {}",
-                        log_key, reinterpret_cast<uintptr_t>(handle), e.what()));
+                    FLOGE("{} An exception occurred while removing device 0x{:08X} from bus: {}",
+                        log_key, reinterpret_cast<uintptr_t>(handle), e.what());
                 }
             }
         }
@@ -282,7 +282,7 @@ namespace gp2y0e02b
 
             const auto& sensor = *maybe_sensor;
 
-            logi(NAMEOF(gp2y0e02b), std::format("Programming sensor e-fuses to use address 0x{:02X}.", addr_new));
+            FLOGI("Programming sensor e-fuses to use address 0x{:02X}.", addr_new);
 
             //The steps below are taken from the datasheet, table 20.
 
@@ -291,7 +291,7 @@ namespace gp2y0e02b
             //Stage 1
 
             //Set clock to manual
-            logi(NAMEOF(gp2y0e02b), "Step 1: set clock to manual");
+            LOGI("Step 1: set clock to manual");
             constexpr register_map_entry clock_select_entry = {
                 .tag = register_map_tag::CLOCK_SELECT,
                 .data = {
@@ -305,7 +305,7 @@ namespace gp2y0e02b
                 throw std::runtime_error("Failed to write clock select");
 
             //Enable Vpp
-            logi(NAMEOF(gp2y0e02b), "Step 1.1: Set Vpp to high");
+            LOGI("Step 1.1: Set Vpp to high");
             gpio_set_level(PIN_VPP_ENABLE, HIGH);
             vTaskDelay(1 / portTICK_PERIOD_MS); //Wait 1ms for Vpp
 
@@ -313,7 +313,7 @@ namespace gp2y0e02b
             //Select e-fuse target (haven't selected bank yet, but
             //this is to set target to the very start of bank e,
             //which is where the i2c address is set)
-            logi(NAMEOF(gp2y0e02b), "Step 2: Select target address for update in e-fuse bank.");
+            LOGI("Step 2: Select target address for update in e-fuse bank.");
             constexpr register_map_entry efuse_target_entry = {
                 .tag = register_map_tag::EFUSE_TARGET_ADDRESS,
                 .data = {
@@ -336,7 +336,7 @@ namespace gp2y0e02b
             //set in the previous write.
             //The process described in the datasheet is unclear, so
             //this is just my best guess.
-            logi(NAMEOF(gp2y0e02b), "Step 3: Select e-fuse bank and bit number for update.");
+            LOGI("Step 3: Select e-fuse bank and bit number for update.");
             constexpr register_map_entry bank_target_entry = {
                 .tag = register_map_tag::EFUSE_BIT_NUMBER_AND_BANK_ASSIGN,
                 .data = {
@@ -353,7 +353,7 @@ namespace gp2y0e02b
             //Stage 4
 
             //Set new address in efuse program register
-            logi(NAMEOF(gp2y0e02b), "Step 4: Set new i2c address in efuse program register.");
+            LOGI("Step 4: Set new i2c address in efuse program register.");
             const register_map_entry set_new_address_entry = {
                 .tag = register_map_tag::EFUSE_PROGRAM_DATA,
                 .data = {
@@ -369,7 +369,7 @@ namespace gp2y0e02b
             //Stage 5
 
             //Enable programming (start commit)
-            logi(NAMEOF(gp2y0e02b), "Step 5, 6: Enable e-fuse program, wait 500us, and then disable e-fuse program, to apply changes.");
+            LOGI("Step 5, 6: Enable e-fuse program, wait 500us, and then disable e-fuse program, to apply changes.");
             constexpr register_map_entry start_program_entry = {
                 .tag = register_map_tag::EFUSE_PROGRAM_ENABLE_BIT,
                 .data = {
@@ -399,7 +399,7 @@ namespace gp2y0e02b
             if (!sensor.try_write_to_register(&end_program_entry))
                 throw std::runtime_error("Failed to disable/end e-fuse program");
 
-            logi(NAMEOF(gp2y0e02b), "Step 6.1: Finished applying e-fuse program. Bringing Vpp back to low.");
+            LOGI("Step 6.1: Finished applying e-fuse program. Bringing Vpp back to low.");
 
             //Disable Vpp
             gpio_set_level(PIN_VPP_ENABLE, LOW);
@@ -408,7 +408,7 @@ namespace gp2y0e02b
             //Stage 7
 
             //Change bank to control register
-            logi(NAMEOF(gp2y0e02b), "Step 7: Selecting control register/bank a.");
+            LOGI("Step 7: Selecting control register/bank a.");
             constexpr register_map_entry select_control_register_entry = {
                 .tag = register_map_tag::BANK_SELECT,
                 .data = {
@@ -422,7 +422,7 @@ namespace gp2y0e02b
                 throw std::runtime_error("Failed to select control register");
 
             //Update register values from e-fuses
-            logi(NAMEOF(gp2y0e02b), "Step 7.1: enable loading e-fuse data into register.");
+            LOGI("Step 7.1: enable loading e-fuse data into register.");
             constexpr register_map_entry enable_update_register_entry = {
                 .tag = register_map_tag::EFUSE_TARGET_ADDRESS,
                 .data = {
@@ -438,7 +438,7 @@ namespace gp2y0e02b
                 throw std::runtime_error("Failed to update register data from e-fuses");
 
             //Stop updating register values from e-fuses
-            logi(NAMEOF(gp2y0e02b), "Step 7.2: disable loading e-fuse data into register.");
+            LOGI("Step 7.2: disable loading e-fuse data into register.");
             constexpr register_map_entry disable_update_register_entry = {
                 .tag = register_map_tag::EFUSE_TARGET_ADDRESS,
                 .data = {
@@ -456,7 +456,7 @@ namespace gp2y0e02b
             //Stage 8
 
             //Software reset
-            logi(NAMEOF(gp2y0e02b), "Step 8: Restarting sensor.");
+            LOGI("Step 8: Restarting sensor.");
 
             constexpr register_map_entry reset_software_entry = {
                 .tag = register_map_tag::SOFTWARE_RESET,
