@@ -33,18 +33,11 @@ constexpr auto PIN_LED_BUILTIN = GPIO_NUM_13;
 constexpr uint8_t LOW = 0;
 constexpr uint8_t HIGH = 0;
 
-constexpr size_t SENSORS_COUNT = 1;
-constexpr size_t PIECEWISE_FREQUENCY_BREAKPOINT_COUNT = 3;
-constexpr size_t I2C_DEVICE_CAPACITY = SENSORS_COUNT;
-
 //Doesn't need to be a macro, but I'm doing it to match portTICK_PERIOD_MS being a macro
 #define portTICK_PERIOD_US ((TickType_t)US_PER_MS / portTICK_PERIOD_MS)
 
 //Change parameter into HIGH or LOW for digital write
 #define DIGITAL(boolean_value) boolean_value ? HIGH : LOW
-
-//Change parameter name directly to string
-#define NAMEOF(any) #any
 
 /**
  * Count the number of set bits in an integer value,

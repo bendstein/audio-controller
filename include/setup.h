@@ -18,12 +18,6 @@ static constexpr auto DISTANCE_SENSOR_TASK_STACK_SIZE = 0x1000;
 static constexpr auto DAC_WRITE_TASK_PRIORITY = 2;
 static constexpr auto DAC_WRITE_TASK_STACK_SIZE = 0x1000;
 
-static constexpr float PIECEWISE_FREQUENCY_BREAKPOINTS[PIECEWISE_FREQUENCY_BREAKPOINT_COUNT] = {
-    0.4,
-    0.8,
-    1
-};
-
 [[nodiscard]] app_state do_setup();
 
 [[nodiscard]] i2c_master_bus_handle_t init_i2c_bus(i2c_port_num_t port, gpio_num_t sda, gpio_num_t scl);

@@ -15,28 +15,15 @@ app_state do_setup()
              I2C_PIN_SDA_0,
              I2C_PIN_SCL_0
          ),
-        .distance_sensors = {},
         .dac_ctrl = nullptr,
-        .sensor_tasks = {},
         .dac_write_task = nullptr,
-        .piecewise_frequencies = {
-            {
-                piecewise_frequency_range_breakpoint(PIECEWISE_FREQUENCY_BREAKPOINTS[0],
-                    single_frequency_range(
-                        tone(musical_note::A, 4)
-                    )),
-                piecewise_frequency_range_breakpoint(PIECEWISE_FREQUENCY_BREAKPOINTS[1],
-                    single_frequency_range(
-                        tone(musical_note::A, 5)
-                    )),
-                piecewise_frequency_range_breakpoint(PIECEWISE_FREQUENCY_BREAKPOINTS[2], single_frequency_range(*tone::dft()))
-            }
-        },
-        .current_tones = {}
+        .distance_sensors = {},
+        .sensor_tasks = {},
+        .current_frequencies = {}
     };
 
-    for (auto& current_tone : setup.current_tones)
-        current_tone = *tone::dft();
+    for (auto& current_frequency : setup.current_frequencies)
+        current_frequency = 0;
 
     init_distance_sensors(&setup);
     init_dac_controller(&setup);
