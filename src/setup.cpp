@@ -10,18 +10,7 @@
 app_state do_setup()
 {
     auto setup = app_state {
-        .i2c_buses = {
-            init_i2c_bus(
-                I2C_BUS_PORT_0,
-                I2C_PIN_SDA_0,
-                I2C_PIN_SCL_0
-            ),
-            init_i2c_bus(
-                I2C_BUS_PORT_1,
-                I2C_PIN_SDA_1,
-                I2C_PIN_SCL_1
-            )
-        },
+        .i2c_buses = {},
         .dac_ctrl = nullptr,
         .dac_write_task = nullptr,
         .distance_sensors = {},
@@ -32,43 +21,39 @@ app_state do_setup()
     for (auto& current_frequency : setup.current_frequencies)
         current_frequency = 0;
 
+    init_i2c_buses(&setup);
     init_distance_sensors(&setup);
     init_dac_controller(&setup);
 
     return setup;
 }
 
-i2c_master_bus_handle_t init_i2c_bus(const i2c_port_num_t port, const gpio_num_t sda, const gpio_num_t scl)
+void init_i2c_buses(app_state* app_state)
 {
-    FLOGI("Init bus: port {}, sda {}, scl {}",
-        static_cast<int>(port), static_cast<int>(sda), static_cast<int>(scl));
+    for (auto i = 0; i < BUS_COUNT; i++)
+    {
+        const auto bus_cfg = BUS_OPTIONS[i];
 
-    const i2c_master_bus_config_t bus_cfg = {
-        .i2c_port = port,
-        .sda_io_num = sda,
-        .scl_io_num = scl,
-        .clk_source = I2C_CLK_SRC_DEFAULT,
-        .glitch_ignore_cnt = I2C_BUS_GLITCH_CT,
-        .intr_priority = I2C_BUS_INTERRUPT_PRIORITY,
-        .trans_queue_depth = I2C_BUS_TRANS_QUEUE_DEPTH,
-        .flags = {
-            .enable_internal_pullup = I2C_BUS_INTERNAL_PULLUP,
-            .allow_pd = I2C_BUS_ALLOW_SLEEP
+        try
+        {
+            if (auto maybe_bus = i2c_master::try_create(bus_cfg);
+                maybe_bus != nullptr)
+            {
+                app_state->i2c_buses[i].swap(maybe_bus);
+                FLOGI("{} Successfully created bus.", app_state->i2c_buses[i]->get_log_key());
+            }
+            else
+            {
+                FLOGE("[Bus {}] Bus was not successfully created.",
+                    bus_cfg.port, bus_cfg.scl, bus_cfg.sda);
+            }
         }
-    };
-
-    gpio_reset_pin(bus_cfg.sda_io_num);
-    gpio_reset_pin(bus_cfg.scl_io_num);
-    gpio_set_direction(bus_cfg.sda_io_num, GPIO_MODE_OUTPUT);
-    gpio_set_direction(bus_cfg.scl_io_num, GPIO_MODE_OUTPUT);
-
-    i2c_master_bus_handle_t handle;
-    ESP_ERROR_CHECK(i2c_new_master_bus(&bus_cfg, &handle));
-
-    FLOGI("Finished initializing I2C bus. Handle: 0x{:08X}",
-        reinterpret_cast<uintptr_t>(handle));
-
-    return handle;
+        catch (std::exception& e)
+        {
+            FLOGE("[Bus {} (scl: {}, sda: {})] An exception occurred while creating bus: {}",
+                bus_cfg.port, bus_cfg.scl, bus_cfg.sda, e.what());
+        }
+    }
 }
 
 void init_distance_sensors(app_state* setup)
@@ -76,16 +61,23 @@ void init_distance_sensors(app_state* setup)
     for (auto i = 0; i < SENSORS_COUNT; i++)
     {
         bool setup_successful = true;
+        const auto [ addr, bus_num ] = SENSOR_CFG[i];
 
         setup->distance_sensors[i] = nullptr;
         setup->sensor_tasks[i] = nullptr;
+
+        if (bus_num >= BUS_COUNT || setup->i2c_buses[bus_num] == nullptr)
+        {
+            FLOGE("[distance sensor 0x{:02X}] Cannot create distance sensor #{}, as bus {} doesn't exist.", addr, i, bus_num);
+            continue;
+        }
 
         try
         {
             //Try to create each sensor, apply configuration, and start respective task
             if (auto maybe_sensor = gp2y0e02b::distance_sensor::try_create_on_bus(
-                setup->i2c_buses[SENSOR_BUSES[i]],
-                SENSOR_ADDRESSES[i],
+                setup->i2c_buses[bus_num]->get_handle(),
+                addr,
                 gp2y0e02b::distance_sensor::TIMEOUT_MS_DFT
             ); maybe_sensor != nullptr)
             {
@@ -115,7 +107,7 @@ void init_distance_sensors(app_state* setup)
                     BaseType_t create_task_result;
 
                     if (try_create_distance_sensor_task(
-                        std::format("gp2y-{}-{:02X}", i, SENSOR_ADDRESSES[i]),
+                        std::format("gp2y-{}-{:02X}", i, addr),
                         &create_task_result,
                         i,
                         setup
@@ -144,14 +136,14 @@ void init_distance_sensors(app_state* setup)
             {
                 setup_successful = false;
                 FLOGE("[distance sensor 0x{:02X}] Failed to create distance sensor #{}.",
-                    SENSOR_ADDRESSES[i], i);
+                    addr, i);
             }
         }
         catch (const std::exception& e)
         {
             setup_successful = false;
             FLOGE("[distance sensor 0x{:02X}] An exception occurred while attempting to create distance sensor #{}: {}",
-                SENSOR_ADDRESSES[i], i, e.what());
+                addr, i, e.what());
         }
 
         if (!setup_successful)

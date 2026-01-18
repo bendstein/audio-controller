@@ -42,6 +42,7 @@ namespace gp2y0e02b
     {
     public:
         static constexpr uint8_t I2C_ADDR_DFT = 0x80;
+        static constexpr uint32_t I2C_SCL_WAIT_US_DFT = 0;
         static constexpr gpio_num_t PIN_VPP_ENABLE = GPIO_NUM_14;
         static constexpr int32_t TIMEOUT_MS_DFT = 5000;
     private:
@@ -59,6 +60,12 @@ namespace gp2y0e02b
                 address,
                 reinterpret_cast<uintptr_t>(handle));
         }
+
+        distance_sensor() = delete;
+        distance_sensor(const distance_sensor& other) = delete;
+        distance_sensor(distance_sensor&& other) = delete;
+        distance_sensor& operator=(const distance_sensor& other) = delete;
+        distance_sensor& operator=(distance_sensor&& other) = delete;
     public:
         distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address)
             : handle(device_handle), address(address)
@@ -71,35 +78,7 @@ namespace gp2y0e02b
             : distance_sensor(device_handle, address)
         {
             timeout_ms = timeout;
-            log_key = make_log_key();
         }
-
-        distance_sensor(const distance_sensor& other) = delete;
-
-        distance_sensor(distance_sensor&& other) = delete;
-
-        // distance_sensor(distance_sensor&& other) noexcept
-        //     : handle(std::exchange(other.handle, nullptr)), timeout_ms(other.timeout_ms),
-        //       state(other.state), address(other.address)
-        // {
-        //     log_key = make_log_key();
-        // }
-
-        distance_sensor& operator=(const distance_sensor& other) = delete;
-
-        // distance_sensor& operator=(distance_sensor&& other) noexcept
-        // {
-        //     if (this == &other)
-        //         return *this;
-        //
-        //     std::swap(handle, other.handle);
-        //     timeout_ms = other.timeout_ms;
-        //     state = other.state;
-        //     address = other.address;
-        //     log_key = make_log_key();
-        //     return *this;
-        // }
-        distance_sensor& operator=(distance_sensor&& other) = delete;
 
         [[nodiscard]] int32_t get_timeout_ms() const { return timeout_ms; }
         void set_timeout(const int32_t timeout) { timeout_ms = timeout; }
@@ -212,7 +191,7 @@ namespace gp2y0e02b
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
                 .device_address = static_cast<uint8_t>(addr >> 1),
                 .scl_speed_hz = I2C_VERY_FAST_HZ,
-                .scl_wait_us = I2C_DEV_SCL_WAIT_US,
+                .scl_wait_us = I2C_SCL_WAIT_US_DFT,
                 .flags = {
                     .disable_ack_check = false
                 }
@@ -238,7 +217,7 @@ namespace gp2y0e02b
             {
                 try
                 {
-                    FLOGE("{} Removing device 0x{:08X} from bus.",
+                    FLOGI("{} Removing device 0x{:08X} from bus.",
                          log_key,
                          reinterpret_cast<uintptr_t>(handle));
 

@@ -8,25 +8,27 @@
 #include "app_state.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
-static constexpr uint8_t SENSOR_ADDRESSES[SENSORS_COUNT] = {
-    gp2y0e02b::distance_sensor::I2C_ADDR_DFT,
-    gp2y0e02b::distance_sensor::I2C_ADDR_DFT
-};
-static constexpr uint8_t DAC_ADDRESS = mcp4725::dac::I2C_ADDR_DFT;
-
-static constexpr size_t SENSOR_BUSES[SENSORS_COUNT] = {
-    0,
-    1
+struct setup_cfg_dev
+{
+    uint8_t address;
+    uint8_t bus_num;
 };
 
-static constexpr auto DISTANCE_SENSOR_TASK_PRIORITY = 2;
-static constexpr auto DISTANCE_SENSOR_TASK_STACK_SIZE = 0x1000;
-static constexpr auto DAC_WRITE_TASK_PRIORITY = 2;
-static constexpr auto DAC_WRITE_TASK_STACK_SIZE = 0x1000;
+static constexpr i2c_master_create_cfg BUS_OPTIONS[BUS_COUNT] = {
+    { .port = I2C_NUM_0, .scl = GPIO_NUM_20, .sda = GPIO_NUM_22 },
+    { .port = I2C_NUM_1, .scl = GPIO_NUM_5, .sda = GPIO_NUM_19 }
+};
+
+static constexpr setup_cfg_dev SENSOR_CFG[SENSORS_COUNT] = {
+    { .address = gp2y0e02b::distance_sensor::I2C_ADDR_DFT, .bus_num = 0 },
+    { .address = gp2y0e02b::distance_sensor::I2C_ADDR_DFT, .bus_num = 1 }
+};
+
+// static constexpr setup_cfg_dev DAC_CFG = { .address = mcp4725::dac::I2C_ADDR_DFT, .bus_num = 0 };
 
 [[nodiscard]] app_state do_setup();
 
-[[nodiscard]] i2c_master_bus_handle_t init_i2c_bus(i2c_port_num_t port, gpio_num_t sda, gpio_num_t scl);
+void init_i2c_buses(app_state* app_state);
 void init_distance_sensors(app_state* setup);
 void init_dac_controller(app_state* setup);
 bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, size_t sensor_ndx, app_state* setup);

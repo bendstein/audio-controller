@@ -39,7 +39,7 @@ void distance_sensor_task(void* task_param_pointer)
 
                 if (app_state->distance_sensors[sensor_index]->try_update_distance(&distance))
                 {
-                    FLOGI("[{}] {}cm", app_state->distance_sensors[sensor_index]->get_log_key(), distance);
+                    // FLOGI("{} {}cm", app_state->distance_sensors[sensor_index]->get_log_key(), distance);
                 }
                 else
                 {

@@ -46,6 +46,7 @@ namespace mcp4725
     {
     public:
         static constexpr uint8_t I2C_ADDR_DFT = 0x62;
+        static constexpr uint32_t I2C_SCL_WAIT_US_DFT = 0;
         static constexpr int32_t TIMEOUT_MS_DFT = 5000;
     private:
         i2c_master_dev_handle_t handle;
@@ -59,6 +60,13 @@ namespace mcp4725
                 address,
                 reinterpret_cast<uintptr_t>(handle));
         }
+
+        dac() = delete;
+        dac(const dac& other) = delete;
+        dac(dac&& other) = delete;
+        dac& operator=(const dac& other) = delete;
+        dac& operator=(dac&& other) = delete;
+
     public:
         dac(i2c_master_dev_handle_t device_handle, const uint8_t address)
             : handle(device_handle), address(address)
@@ -71,30 +79,6 @@ namespace mcp4725
         {
             timeout_ms = timeout;
             log_key = make_log_key();
-        }
-
-        dac(const dac& other) = delete;
-
-        dac(dac&& other) noexcept
-            : handle(std::exchange(other.handle, nullptr)),
-              timeout_ms(other.timeout_ms), address(other.address)
-        {
-            log_key = make_log_key();
-        }
-
-        dac& operator=(const dac& other) = delete;
-
-        dac& operator=(dac&& other) noexcept
-        {
-            if (this == &other)
-                return *this;
-
-            std::swap(handle, other.handle);
-            timeout_ms = other.timeout_ms;
-            address = other.address;
-            log_key = make_log_key();
-
-            return *this;
         }
 
         [[nodiscard]] int32_t get_timeout_ms() const { return timeout_ms; }
@@ -152,7 +136,7 @@ namespace mcp4725
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
                 .device_address = addr,
                 .scl_speed_hz = I2C_FAST_HZ,
-                .scl_wait_us = I2C_DEV_SCL_WAIT_US,
+                .scl_wait_us = I2C_SCL_WAIT_US_DFT,
                 .flags = {
                     .disable_ack_check = false
                 }
@@ -168,7 +152,7 @@ namespace mcp4725
                 return nullptr;
             }
 
-            return std::make_unique<dac>(dac(handle, addr, timeout_ms));
+            return std::make_unique<dac>(handle, addr, timeout_ms);
         }
     };
 
