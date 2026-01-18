@@ -10,11 +10,18 @@
 app_state do_setup()
 {
     auto setup = app_state {
-        .i2c_bus_0 = init_i2c_bus(
-             I2C_BUS_PORT_0,
-             I2C_PIN_SDA_0,
-             I2C_PIN_SCL_0
-         ),
+        .i2c_buses = {
+            init_i2c_bus(
+                I2C_BUS_PORT_0,
+                I2C_PIN_SDA_0,
+                I2C_PIN_SCL_0
+            ),
+            init_i2c_bus(
+                I2C_BUS_PORT_1,
+                I2C_PIN_SDA_1,
+                I2C_PIN_SCL_1
+            )
+        },
         .dac_ctrl = nullptr,
         .dac_write_task = nullptr,
         .distance_sensors = {},
@@ -77,7 +84,7 @@ void init_distance_sensors(app_state* setup)
         {
             //Try to create each sensor, apply configuration, and start respective task
             if (auto maybe_sensor = gp2y0e02b::distance_sensor::try_create_on_bus(
-                setup->i2c_bus_0,
+                setup->i2c_buses[SENSOR_BUSES[i]],
                 SENSOR_ADDRESSES[i],
                 gp2y0e02b::distance_sensor::TIMEOUT_MS_DFT
             ); maybe_sensor != nullptr)

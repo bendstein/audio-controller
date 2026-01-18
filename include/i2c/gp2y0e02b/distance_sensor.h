@@ -206,7 +206,7 @@ namespace gp2y0e02b
          */
         [[nodiscard]] static std::unique_ptr<distance_sensor> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
         {
-            FLOGI("[distance sensor 0x{:02X}] Creating device on bus.", addr);
+            FLOGI("[distance sensor 0x{:02X}] Creating device on bus 0x{:08X}.", addr, reinterpret_cast<uintptr_t>(bus));
 
             const i2c_device_config_t device_cfg = {
                 .dev_addr_length = I2C_ADDR_BIT_LEN_7,
@@ -222,8 +222,8 @@ namespace gp2y0e02b
 
             if (const auto add_to_bus_result = i2c_master_bus_add_device(bus, &device_cfg, &handle); add_to_bus_result != ESP_OK)
             {
-                FLOGE("[distance sensor 0x{:02X}] Failed to create device. [0x{:04X}] {}",
-                    addr, add_to_bus_result, esp_err_to_name(add_to_bus_result));
+                FLOGE("[distance sensor 0x{:02X}] Failed to create device on bus 0x{:08X}. [0x{:04X}] {}",
+                    addr, reinterpret_cast<uintptr_t>(bus), add_to_bus_result, esp_err_to_name(add_to_bus_result));
 
                 return nullptr;
             }

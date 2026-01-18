@@ -9,9 +9,15 @@
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
 static constexpr uint8_t SENSOR_ADDRESSES[SENSORS_COUNT] = {
+    gp2y0e02b::distance_sensor::I2C_ADDR_DFT,
     gp2y0e02b::distance_sensor::I2C_ADDR_DFT
 };
 static constexpr uint8_t DAC_ADDRESS = mcp4725::dac::I2C_ADDR_DFT;
+
+static constexpr size_t SENSOR_BUSES[SENSORS_COUNT] = {
+    0,
+    1
+};
 
 static constexpr auto DISTANCE_SENSOR_TASK_PRIORITY = 2;
 static constexpr auto DISTANCE_SENSOR_TASK_STACK_SIZE = 0x1000;
