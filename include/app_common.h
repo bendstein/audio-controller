@@ -166,10 +166,10 @@ inline void loge(const std::string& tag, const std::string& message)
 
 //Only verbose log if enabled
 #ifdef LOG_VERBOSE
-#define VERBOSE(message) logv(LOG_VERBOSE_TAG, std::format("({}:{}) {}", __FILE_NAME__, __LINE__, message))
-#define VERBOSE_LB(message) logv(LOG_VERBOSE_TAG, std::format("({}:{})\r\n{}", __FILE_NAME__, __LINE__, message))
-#define FVERBOSE(message, ...) logv(LOG_VERBOSE_TAG, std::format("({}:{}) {}", __FILE_NAME__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
-#define FVERBOSE_LB(message, ...) logv(LOG_VERBOSE_TAG, std::format("({}:{})\r\n{}", __FILE_NAME__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
+#define VERBOSE(message) logv(LOG_VERBOSE_TAG, std::format("({}:{}:{}) {}", __FILE_NAME__, __func__, __LINE__, message))
+#define VERBOSE_LB(message) logv(LOG_VERBOSE_TAG, std::format("({}:{}:{})\r\n{}", __FILE_NAME__, __func__, __LINE__, message))
+#define FVERBOSE(message, ...) logv(LOG_VERBOSE_TAG, std::format("({}:{}:{}) {}", __FILE_NAME__, __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
+#define FVERBOSE_LB(message, ...) logv(LOG_VERBOSE_TAG, std::format("({}:{}:{})\r\n{}", __FILE_NAME__, __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
 #else
 #define VERBOSE(message) {}
 #define VERBOSE_LB(message) {}

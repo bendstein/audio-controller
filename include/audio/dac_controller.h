@@ -16,13 +16,31 @@
 #include <freertos/task.h>
 
 #include "app_common.h"
+#include "rtos_utils.h"
 #include "i2c/mcp4725.h"
+
+enum struct dac_controller_start_result
+{
+    OK,
+    ERR,
+    ALREADY_STARTED
+};
 
 class dac_controller
 {
 public:
-    static constexpr std::string LOG_KEY = "[DAC Ctrl]";
+    static constexpr auto LOG_KEY = "[DAC Ctrl]";
 private:
+    static constexpr auto TASK_NAME = "[DAC Ctrl Task]";
+    static constexpr auto WB_TASK_NAME = "[DAC Ctrl WB Task]";
+    static constexpr auto TASK_PRIORITY = 1;
+    static constexpr auto TASK_STACK_SIZE = 0x1000;
+    static constexpr auto WB_TASK_PRIORITY = 1;
+    static constexpr auto WB_TASK_STACK_SIZE = 0x1000;
+
+    static constexpr auto TASK_MESSAGE_INDEX_WB_READY = 1;
+    static constexpr auto WB_TASK_MESSAGE_INDEX_READY = 1;
+
     static constexpr int DAC_CFG_DESC_NUM = 8;
     static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 10;
     static constexpr int DAC_CFG_SAMPLE_RATE = 1 << 17;
@@ -35,65 +53,275 @@ private:
     static constexpr size_t DAC_DOUBLE_BUFFER_SIZE_ADJUSTMENT = 1 << 8;
     static constexpr size_t DAC_DOUBLE_BUFFER_SIZE_TRUNCATED = DAC_DOUBLE_BUFFER_SIZE - DAC_DOUBLE_BUFFER_SIZE_ADJUSTMENT;
 
+    static constexpr size_t FREQ_BUFFER_CAPACITY = 32;
+    static constexpr size_t DAC_WRITE_QUEUE_CAPACITY = 8;
+
     dac_continuous_handle_t handle;
+    TaskHandle_t task;
+    TaskHandle_t wb_task;
+
     size_t active_buffer_len = 0;
     uint8_t* active_buffer;
     uint8_t* working_buffer;
 
+    std::atomic_bool freq_buffer_changed { true };
+    size_t freq_buffer_len = 0;
+    float* freq_buffer;
+
+    SemaphoreHandle_t frequency_mux;
+    SemaphoreHandle_t swap_buffers_mux;
+    QueueHandle_t dac_write_queue_handle;
+
     size_t swap_buffers(const size_t working_buffer_len)
     {
+        FVERBOSE("{} Swap buffers.", LOG_KEY);
+
+        rtos_semaphore_handle lock { swap_buffers_mux };
+
         std::swap(active_buffer, working_buffer);
         const auto current = active_buffer_len;
         active_buffer_len = working_buffer_len;
         return current;
     }
-public:
 
-    explicit dac_controller(dac_continuous_handle_t handle)
-        : handle(handle)
+    static bool IRAM_ATTR dac_isr(dac_continuous_handle_t, const dac_event_data_t* ev, void* isr_param)
     {
-        active_buffer = new uint8_t[DAC_DOUBLE_BUFFER_SIZE] {};
-        working_buffer = new uint8_t[DAC_DOUBLE_BUFFER_SIZE] {};
+        //ISR adds event to the queue, does nothing else
+        BaseType_t should_wake = pdFALSE;
+
+        if (isr_param == nullptr)
+            return should_wake;
+
+        const auto queue = static_cast<QueueHandle_t>(isr_param);
+
+        if (xQueueIsQueueFullFromISR(queue)) //Dequeue oldest item on full
+        {
+            dac_event_data_t dummy;
+            xQueueReceiveFromISR(queue, &dummy, &should_wake);
+        }
+
+        //Enqueue this event
+        xQueueSendFromISR(queue, ev, &should_wake);
+
+        return should_wake;
     }
 
-    dac_controller(const dac_controller& other) = delete;
-
-    dac_controller(dac_controller&& other) = delete;
-
-    dac_controller& operator=(const dac_controller& other) = delete;
-
-    dac_controller& operator=(dac_controller&& other) = delete;
-
-    void accept_frequencies(const float frequencies[], const size_t size)
+    [[noreturn]]
+    static void calculate_working_buffer_task(void* task_param)
     {
-        static_assert(DAC_DOUBLE_BUFFER_SIZE < std::numeric_limits<float>::max());
-        assert(size < std::numeric_limits<float>::max());
+        assert(task_param != nullptr);
 
-        //Special case if no frequencies are given: stop
-        if (size == 0)
+        try
         {
-            active_buffer_len = 0;
-            if (const auto disable_result = dac_continuous_disable(handle);
-                disable_result != ESP_OK)
+            if (const auto self = static_cast<dac_controller*>(task_param);
+                self != nullptr)
             {
-                FLOGE("{} Failed to disable DAC output. (0x{:02X}) {}", LOG_KEY, disable_result, esp_err_to_name(disable_result));
+                //Offset for working buffer calculation, for continuity between adjacent calculations.
+                //Reset whenever the frequency buffer is changed.
+                size_t offset = 0;
+
+                size_t working_buffer_len = 0;
+
+                FLOGI("{} Task {} starting main loop.", LOG_KEY, WB_TASK_NAME);
+
+                do
+                {
+                    FVERBOSE("{} Task {} wait for frequency data.", LOG_KEY, WB_TASK_NAME);
+
+                    //Wait for frequencies to be available to create buffer data from
+                    if (const auto maybe_frequencies_handle = rtos_semaphore_handle::try_take(self->frequency_mux);
+                        maybe_frequencies_handle != nullptr)
+                    {
+                        if (self->freq_buffer_changed) //Reset offset on frequency change
+                        {
+                            self->freq_buffer_changed = false;
+                            offset = 0;
+                        }
+
+                        working_buffer_len = self->populate_working_buffer(offset);
+
+                        if (working_buffer_len > DAC_WRITE_QUEUE_CAPACITY)
+                            working_buffer_len -= DAC_WRITE_QUEUE_CAPACITY;
+
+                        offset += working_buffer_len;
+                    }
+                    else
+                    {
+                        FLOGE("{} Didn't successfully acquire mutex for frequency data in task {}.", LOG_KEY, WB_TASK_NAME);
+                        vTaskDelay(10 / portTICK_PERIOD_MS);
+                        continue;
+                    }
+
+                    //Indicate that working buffer is ready for swap, including its length
+                    FVERBOSE("{} Task {} sending message {} to task {}:{}.", LOG_KEY, WB_TASK_NAME, working_buffer_len, TASK_NAME, TASK_MESSAGE_INDEX_WB_READY);
+                    xTaskNotifyIndexed(self->task, TASK_MESSAGE_INDEX_WB_READY, working_buffer_len, eSetValueWithOverwrite);
+
+                    //Wait for message to recalculate working buffer
+                    FVERBOSE("{} Task {} waiting for message to recalculate (ndx {}).", LOG_KEY, WB_TASK_NAME, WB_TASK_MESSAGE_INDEX_READY);
+                    do
+                    {
+                        if (const auto wait_result = xTaskNotifyWaitIndexed(WB_TASK_MESSAGE_INDEX_READY, 0xFFFFFFFF, 0xFFFFFFFF, nullptr, portMAX_DELAY);
+                            wait_result != pdPASS)
+                        {
+                            FLOGE("{} Didn't successfully receive continue message in task {}.", LOG_KEY, WB_TASK_NAME);
+                            vTaskDelay(10 / portTICK_PERIOD_MS);
+                            continue;
+                        }
+
+                        break;
+                    }
+                    while (true);
+                }
+                while (true);
             }
 
-            return;
+            FLOGE("{} Invalid task param for task {}", LOG_KEY, WB_TASK_NAME);
         }
+        catch (std::exception& e)
+        {
+            FLOGE("{} An exception occurred while starting task {}: {}", LOG_KEY, WB_TASK_NAME, e.what());
+        }
+
+        do { vTaskDelay(portMAX_DELAY); } while (true);
+    }
+
+    [[noreturn]]
+    static void dac_task(void* task_param)
+    {
+        assert(task_param != nullptr);
+
+        try
+        {
+            if (const auto self = static_cast<dac_controller*>(task_param);
+                self != nullptr)
+            {
+                uint32_t working_buffer_len;
+
+                FLOGI("{} Task {} waiting for initial buffer calculation.", LOG_KEY, TASK_NAME);
+
+                //Wait for initial buffer calculation
+                do
+                {
+                    if (const auto wait_result = xTaskNotifyWaitIndexed(TASK_MESSAGE_INDEX_WB_READY, 0xFFFFFFFF, 0xFFFFFFFF,
+                        &working_buffer_len, portMAX_DELAY);
+                        wait_result != pdPASS)
+                    {
+                        FLOGE("{} Didn't successfully receive initial buffer calculation message in task {}.", LOG_KEY, WB_TASK_NAME);
+                        vTaskDelay(10 / portTICK_PERIOD_MS);
+                        continue;
+                    }
+
+                    break;
+                }
+                while (true);
+
+                FLOGI("{} Task {} starting DAC continuous write.", LOG_KEY, TASK_NAME);
+
+                if (const auto start_write_result = dac_continuous_start_async_writing(self->handle);
+                    start_write_result != ESP_OK)
+                {
+                    FLOGE("{} Task {} failed to start DAC async write. [0x{:04X}] {}", LOG_KEY, TASK_NAME, start_write_result, esp_err_to_name(start_write_result));
+                }
+
+                FLOGI("{} Task {} starting main loop.", LOG_KEY, TASK_NAME);
+
+                do
+                {
+                    self->swap_buffers(working_buffer_len);
+
+                    //Notify working buffer task that it can start recalculating
+                    if (self->wb_task != nullptr)
+                    {
+                        FVERBOSE("{} Task {} sending message to task {}:{} indicating that buffer should be recalculated.",
+                            LOG_KEY, TASK_NAME, WB_TASK_NAME, WB_TASK_MESSAGE_INDEX_READY);
+
+                        xTaskNotifyIndexed(self->wb_task, WB_TASK_MESSAGE_INDEX_READY, 1, eSetValueWithoutOverwrite);
+                    }
+
+                    dac_event_data_t ev;
+                    size_t cursor = 0;
+
+                    //Write active buffer to DAC DMA buffer
+                    while (cursor < self->active_buffer_len)
+                    {
+                        //Wait for interrupt to enqueue event
+                        FVERBOSE("{} Task {} waiting for next DAC event.", LOG_KEY, TASK_NAME);
+
+                        xQueueReceive(self->dac_write_queue_handle, &ev, portMAX_DELAY);
+
+                        size_t loaded = 0;
+
+                        if (const auto write_result = dac_continuous_write_asynchronously(self->handle,
+                            static_cast<uint8_t*>(ev.buf), ev.buf_size,
+                            self->active_buffer + cursor, self->active_buffer_len - cursor, &loaded);
+                            write_result != ESP_OK)
+                        {
+                            FLOGE("{} Didn't successfully write to DAC DMA buffer in task {}. [0x{:02}] {}", LOG_KEY, TASK_NAME, write_result, esp_err_to_name(write_result));
+                        }
+                        else
+                        {
+                            cursor += loaded;
+                        }
+
+                        FVERBOSE("{} Task {} wrote {} bytes to DAC.", LOG_KEY, TASK_NAME, loaded);
+                    }
+
+                    //Swap in working buffer
+                    do
+                    {
+                        FVERBOSE("{} Task {} waiting for working buffer to be ready (ndx: {})", LOG_KEY, TASK_NAME, TASK_MESSAGE_INDEX_WB_READY);
+
+                        if (const auto wait_result = xTaskNotifyWaitIndexed(TASK_MESSAGE_INDEX_WB_READY, 0xFFFFFFFF, 0xFFFFFFFF,
+                            &working_buffer_len, portMAX_DELAY);
+                            wait_result != pdPASS)
+                        {
+                            FLOGE("{} Didn't successfully receive buffer calculation message in task {}.", LOG_KEY, WB_TASK_NAME);
+                            vTaskDelay(10 / portTICK_PERIOD_MS);
+                            continue;
+                        }
+
+                        break;
+                    }
+                    while (true);
+
+                    FVERBOSE("{} Task {} received working buffer w/ length {}", LOG_KEY, TASK_NAME, working_buffer_len);
+                }
+                while (true);
+            }
+
+            FLOGE("{} Invalid task param for task {}", LOG_KEY, TASK_NAME);
+        }
+        catch (std::exception& e)
+        {
+            FLOGE("{} An exception occurred while starting task {}: {}", LOG_KEY, TASK_NAME, e.what());
+        }
+
+        do { vTaskDelay(portMAX_DELAY); } while (true);
+    }
+
+    [[nodiscard]] size_t populate_working_buffer(const size_t n) const
+    {
+        static_assert(DAC_DOUBLE_BUFFER_SIZE < std::numeric_limits<float>::max());
+        static_assert(FREQ_BUFFER_CAPACITY < std::numeric_limits<float>::max());
+        assert(handle != nullptr);
+        assert(freq_buffer_len < FREQ_BUFFER_CAPACITY);
+
+        if (freq_buffer_len == 0) //No frequency data given
+            return 0;
 
         for (size_t i = 0; i < DAC_DOUBLE_BUFFER_SIZE; i++)
         {
             //Current time is the ratio through the buffer, scaled to the amount of time that the buffer corresponds to
-            const auto t = (static_cast<float>(i) / DAC_DOUBLE_BUFFER_SIZE) * DAC_DOUBLE_BUFFER_TIME_SECONDS;
+            //Add n as initial offset, to reflect whether this is a continuation of the same set of frequencies
+            const auto t = (static_cast<float>(i + n) / DAC_DOUBLE_BUFFER_SIZE) * DAC_DOUBLE_BUFFER_TIME_SECONDS;
 
             //Sum up sine waves, skipping 0s
             float sum = 0.f;
             size_t freq_used = 0;
 
-            for (size_t f = 0; f < size; f++)
+            for (size_t f = 0; f < freq_buffer_len; f++)
             {
-                if (const auto freq = frequencies[f]; freq > 0)
+                if (const auto freq = freq_buffer[f]; freq > 0)
                 {
                     sum += (1.f + sinf(2.f * static_cast<float>(M_PI) * static_cast<float>(t) * freq)) / 2.f;
                     freq_used++;
@@ -130,37 +358,37 @@ public:
             working_buffer[i] = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round((1. * moving_average_sum) / moving_average_count)), 0, 0xFF));
         }
 
-        //Truncate the end of the buffer for continuity when wrapping from end to start.
-        //Subtracting DAC_LENGTH_ADJUSTMENT because for some reason the last 256 bits are
-        //ignored.
-        //Try to find the point closest to the end of the buffer which passes through 0xFF/2
-        //with a positive slope
-        //Sample interval is chosen arbitrarily. It's only purpose is to prevent potential
-        //rounding issues from choosing points too close to each other
-        constexpr size_t sample_interval = 4;
-        constexpr uint8_t midpoint = 0xFF / 2;
-
-        size_t working_buffer_len = DAC_DOUBLE_BUFFER_SIZE_TRUNCATED;
-
-        uint8_t previous_value = 0;
-        for (size_t i = DAC_DOUBLE_BUFFER_SIZE_TRUNCATED - 1; i >= sample_interval; i -= sample_interval)
-        {
-            const auto current_value = working_buffer[i];
-
-            //Check that points are on opposite side of the midpoint,
-            //and that this point is less than previous (moving backwards,
-            //so this indicates ascending)
-            if (current_value <= midpoint
-                && previous_value >= midpoint
-                && current_value < previous_value
-            )
-            {
-                working_buffer_len = i;
-                break;
-            }
-
-            previous_value = current_value;
-        }
+        // //Truncate the end of the buffer for continuity when wrapping from end to start.
+        // //Subtracting DAC_LENGTH_ADJUSTMENT because for some reason the last 256 bits are
+        // //ignored.
+        // //Try to find the point closest to the end of the buffer which passes through 0xFF/2
+        // //with a positive slope
+        // //Sample interval is chosen arbitrarily. It's only purpose is to prevent potential
+        // //rounding issues from choosing points too close to each other
+        // constexpr size_t sample_interval = 4;
+        // constexpr uint8_t midpoint = 0xFF / 2;
+        //
+        // size_t working_buffer_len = DAC_DOUBLE_BUFFER_SIZE_TRUNCATED;
+        //
+        // uint8_t previous_value = 0;
+        // for (size_t i = DAC_DOUBLE_BUFFER_SIZE_TRUNCATED - 1; i >= sample_interval; i -= sample_interval)
+        // {
+        //     const auto current_value = working_buffer[i];
+        //
+        //     //Check that points are on opposite side of the midpoint,
+        //     //and that this point is less than previous (moving backwards,
+        //     //so this indicates ascending)
+        //     if (current_value <= midpoint
+        //         && previous_value >= midpoint
+        //         && current_value < previous_value
+        //     )
+        //     {
+        //         working_buffer_len = i;
+        //         break;
+        //     }
+        //
+        //     previous_value = current_value;
+        // }
 
         // //Find the value closest to the end that is within epsilon of the
         // //first value, and use that as the end of the buffer, to help
@@ -182,34 +410,132 @@ public:
         //
         // // working_buffer_len = DAC_DOUBLE_BUFFER_SIZE;
 
-        //Swap buffers and write to DAC
-        const auto prev_buffer_len = swap_buffers(working_buffer_len);
+        // return working_buffer_len;
 
-        FVERBOSE("First value: 0x{:02X}, Len: {}, Last Value: 0x{:02X}, True Last Value: 0x{:02X}",
-            first_value,
-            active_buffer_len,
-            active_buffer[active_buffer_len - 1],
-            active_buffer[DAC_DOUBLE_BUFFER_SIZE - 1]);
+        return DAC_DOUBLE_BUFFER_SIZE;
+    }
+public:
+    dac_controller() : handle(nullptr), task(nullptr), wb_task(nullptr)
+    {
+        frequency_mux = xSemaphoreCreateMutex();
+        swap_buffers_mux = xSemaphoreCreateMutex();
+        dac_write_queue_handle = xQueueCreate(DAC_WRITE_QUEUE_CAPACITY, sizeof(dac_event_data_t));
 
-        //Re-enable DAC output if necessary
-        if (prev_buffer_len == 0)
+        active_buffer = new uint8_t[DAC_DOUBLE_BUFFER_SIZE] {};
+        working_buffer = new uint8_t[DAC_DOUBLE_BUFFER_SIZE] {};
+        freq_buffer = new float[FREQ_BUFFER_CAPACITY] {};
+    }
+
+    dac_controller(const dac_controller& other) = delete;
+    dac_controller(dac_controller&& other) = delete;
+    dac_controller& operator=(const dac_controller& other) = delete;
+    dac_controller& operator=(dac_controller&& other) = delete;
+
+    dac_controller_start_result start()
+    {
+        try
         {
-            if (const auto enable_result = dac_continuous_enable(handle);
-                enable_result != ESP_OK)
+            if (task != nullptr && wb_task != nullptr)
             {
-                FLOGE("{} Failed to enable DAC output. (0x{:02X}) {}", LOG_KEY, enable_result, esp_err_to_name(enable_result));
+                FLOGW("{} Tasks {}, {} are already started ({}: 0x{:08X}, {}: 0x{:08X})",
+                    LOG_KEY,
+                    WB_TASK_NAME, TASK_NAME,
+                    WB_TASK_NAME, reinterpret_cast<uintptr_t>(wb_task),
+                    TASK_NAME, reinterpret_cast<uintptr_t>(task));
+
+                return dac_controller_start_result::ALREADY_STARTED;
             }
+
+            if (wb_task == nullptr)
+            {
+                if (const auto wb_result = xTaskCreate(
+                    calculate_working_buffer_task,
+                    WB_TASK_NAME,
+                    WB_TASK_STACK_SIZE,
+                    this,
+                    WB_TASK_PRIORITY,
+                    &this->wb_task
+                ); wb_result != pdPASS)
+                {
+                    FLOGE("{} Failed to start task {}: 0x{:04X}", LOG_KEY, WB_TASK_NAME, static_cast<uint16_t>(wb_result));
+                    return dac_controller_start_result::ERR;
+                }
+            }
+
+            FLOGI("{} Task {} is started (0x{:08X}).", LOG_KEY, WB_TASK_NAME, reinterpret_cast<uintptr_t>(wb_task));
+
+            if (task == nullptr)
+            {
+                if (const auto result = xTaskCreate(
+                    dac_task,
+                    TASK_NAME,
+                    TASK_STACK_SIZE,
+                    this,
+                    TASK_PRIORITY,
+                    &this->task
+                ); result != pdPASS)
+                {
+                    FLOGE("{} Failed to start task {}: 0x{:04X}", LOG_KEY, TASK_NAME, static_cast<uint16_t>(result));
+                    return dac_controller_start_result::ERR;
+                }
+            }
+
+            FLOGI("{} Task {} is started (0x{:08X}).", LOG_KEY, TASK_NAME, reinterpret_cast<uintptr_t>(task));
+
+            return dac_controller_start_result::OK;
+        }
+        catch (const std::exception& e)
+        {
+            FLOGE("{} An exception occurred while starting task: {}", LOG_KEY, e.what());
         }
 
-        if (const auto dac_write_result = dac_continuous_write_cyclically(
-            handle,
-            active_buffer,
-            active_buffer_len,
-            nullptr
-        ); dac_write_result != ESP_OK)
+        return dac_controller_start_result::ERR;
+    }
+
+    void write(const float data[], const size_t data_len)
+    {
+        assert(data_len > 0 && data_len <= FREQ_BUFFER_CAPACITY);
+
+        FVERBOSE("{} Waiting to write {} frequencies to DAC controller.", LOG_KEY, data_len);
+
+        //Wait to be able to record frequency data
+        if (const auto maybe_frequencies_handle = rtos_semaphore_handle::try_take(frequency_mux);
+            maybe_frequencies_handle != nullptr)
         {
-            FLOGE("{} Failed to write to DAC. [0x{:04X}] {}",
-                LOG_KEY, dac_write_result, esp_err_to_name(dac_write_result));
+            freq_buffer_changed = false;
+
+            for (size_t i = 0; i < data_len; i++)
+            {
+                if (!check_frequency_equivalency(freq_buffer[i], data[i]))
+                {
+                    freq_buffer_changed = true;
+                    freq_buffer[i] = data[i];
+                }
+            }
+
+            if (freq_buffer_len != data_len)
+            {
+                FVERBOSE("{} Frequency data was updated.", LOG_KEY);
+                freq_buffer_changed = true;
+                freq_buffer_len = data_len;
+
+                //If changed, send message to update working buffer
+                if (wb_task != nullptr)
+                {
+                    FVERBOSE("{} Sending message to task {}:{} indicating that buffer should be recalculated.",
+                        LOG_KEY, WB_TASK_NAME, WB_TASK_MESSAGE_INDEX_READY);
+
+                    xTaskNotifyIndexed(wb_task, WB_TASK_MESSAGE_INDEX_READY, 1, eSetValueWithoutOverwrite);
+                }
+            }
+            else
+            {
+                FVERBOSE("{} No frequencies were changed.", LOG_KEY);
+            }
+        }
+        else
+        {
+            FLOGE("{} Didn't successfully acquire mutex to update frequency data.", LOG_KEY);
         }
     }
 
@@ -238,21 +564,70 @@ public:
             return nullptr;
         }
 
-        // if (const auto enable_result = dac_continuous_enable(handle);
-        //     enable_result != ESP_OK)
-        // {
-        //     FLOGE("{} Failed to enable DAC channels. [0x{:04X}] {}",
-        //         LOG_KEY, enable_result, esp_err_to_name(enable_result));
-        //
-        //     return nullptr;
-        // }
+        auto ctrl = std::make_unique<dac_controller>();
+        ctrl->handle = handle;
 
-        return std::make_unique<dac_controller>(handle);
+        if (const auto enable_result = dac_continuous_enable(handle);
+            enable_result != ESP_OK)
+        {
+            FLOGE("{} Failed to enable DAC continuous write. [0x{:04X}] {}", LOG_KEY, enable_result, esp_err_to_name(enable_result));
+            return nullptr;
+        }
+
+        constexpr auto cb = dac_event_callbacks_t {
+            .on_convert_done = dac_isr,
+            .on_stop = nullptr
+        };
+
+        if (const auto register_cb_result = dac_continuous_register_event_callback(handle, &cb, ctrl->dac_write_queue_handle);
+            register_cb_result != ESP_OK)
+        {
+            FLOGE("{} Failed to register DAC callbacks. [0x{:04X}] {}", LOG_KEY, register_cb_result, esp_err_to_name(register_cb_result));
+            return nullptr;
+        }
+
+        return ctrl;
     }
 
     ~dac_controller()
     {
-        //Dealloc DAC channel handle, associated task handle on destroy
+        //Dealloc DAC channel handle, associated task handles on destroy
+        if (task != nullptr)
+        {
+            try
+            {
+                FLOGI("{} Stopping task {}/0x{:08X}.",
+                     LOG_KEY,
+                     WB_TASK_NAME,
+                     reinterpret_cast<uintptr_t>(wb_task));
+
+                vTaskDelete(wb_task);
+            }
+            catch (std::exception& e)
+            {
+                FLOGE("{} An exception occurred while stopping task 0x{:08X}: {}",
+                    LOG_KEY, reinterpret_cast<uintptr_t>(task), e.what());
+            }
+        }
+
+        if (task != nullptr)
+        {
+            try
+            {
+                FLOGI("{} Stopping task {}/0x{:08X}.",
+                     LOG_KEY,
+                     TASK_NAME,
+                     reinterpret_cast<uintptr_t>(task));
+
+                vTaskDelete(task);
+            }
+            catch (std::exception& e)
+            {
+                FLOGE("{} An exception occurred while stopping task 0x{:08X}: {}",
+                    LOG_KEY, reinterpret_cast<uintptr_t>(task), e.what());
+            }
+        }
+
         if (handle != nullptr)
         {
             try
@@ -278,6 +653,7 @@ public:
             }
         }
 
+        delete[] freq_buffer;
         delete[] active_buffer;
         delete[] working_buffer;
     }

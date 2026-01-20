@@ -100,6 +100,17 @@ void dac_write_task(void* task_param_pointer)
 
         auto& dac_controller = *app_state->dac_ctrl;
 
+        //Start dac_controller inner task
+        if (const auto start_result = dac_controller.start();
+            start_result == dac_controller_start_result::ERR)
+        {
+            FLOGE("{} Failed to start inner tasks.", dac_controller::LOG_KEY);
+        }
+        else
+        {
+            FLOGI("{} Inner tasks are started.", dac_controller::LOG_KEY);
+        }
+
         //Collect the current frequencies corresponding to each sensor,
         //and send them to the DAC controller
         float frequencies[SENSORS_COUNT] {};
@@ -133,7 +144,7 @@ void dac_write_task(void* task_param_pointer)
 
                 if (has_change) //DAC only requires update on change
                 {
-                    dac_controller.accept_frequencies(frequencies, frequency_count);
+                    dac_controller.write(frequencies, frequency_count);
                 }
             }
             catch (std::exception& e)

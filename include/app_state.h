@@ -14,8 +14,8 @@ constexpr size_t SENSOR_TONES_LEN = 3;
 
 const float SENSOR_TONES[SENSORS_COUNT][SENSOR_TONES_LEN]
 {
-    { musical_note_freq_hz(musical_note::A, 3), musical_note_freq_hz(musical_note::A, 4), 0 },
-    { musical_note_freq_hz(musical_note::C, 3), musical_note_freq_hz(musical_note::C, 4), 0 }
+    { musical_note_freq_hz(musical_note::A, 4), musical_note_freq_hz(musical_note::A, 5), musical_note_freq_hz(musical_note::A, 3) },
+    { musical_note_freq_hz(musical_note::C, 5), musical_note_freq_hz(musical_note::C, 6), musical_note_freq_hz(musical_note::C, 4) }
 };
 constexpr float SENSOR_TONES_BREAKPOINTS[SENSOR_TONES_LEN] = {
     0.4,
