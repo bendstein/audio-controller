@@ -57,16 +57,16 @@ void distance_sensor_task(void* task_param_pointer)
                     if (const auto current_breakpoint = SENSOR_TONES_BREAKPOINTS[j];
                         ratio <= current_breakpoint)
                     {
-                        app_state->current_frequencies[sensor_index] = SENSOR_TONES[sensor_index][j];
+                        app_state->current_tones[sensor_index] = SENSOR_TONES[sensor_index][j];
                         assigned = true;
                         break;
                     }
                 }
 
                 if (!assigned)
-                    app_state->current_frequencies[sensor_index] = 0;
+                    app_state->current_tones[sensor_index] = musical_note_tone::create_invalid();
 
-                vTaskDelay(500 / portTICK_PERIOD_US);
+                vTaskDelay(100 / portTICK_PERIOD_US);
             }
             catch (std::exception& e)
             {
@@ -111,40 +111,51 @@ void dac_write_task(void* task_param_pointer)
             FLOGI("{} Inner tasks are started.", dac_controller::LOG_KEY);
         }
 
-        //Collect the current frequencies corresponding to each sensor,
+        // const float f[]
+        // {
+        //     musical_note_freq_hz(musical_note::B, 3),
+        //     musical_note_freq_hz(musical_note::D, 4),
+        //     musical_note_freq_hz(musical_note::F, 4),
+        //     musical_note_freq_hz(musical_note::A, 4)
+        // };
+        // dac_controller.write(f, sizeof(f) / sizeof(float));
+        //
+        // do { vTaskDelay(portMAX_DELAY); } while (true);
+
+        //Collect the current tones corresponding to each sensor,
         //and send them to the DAC controller
-        float frequencies[SENSORS_COUNT] {};
-        uint8_t frequency_count = 0;
+        musical_note_tone tones[SENSORS_COUNT + 1] {};
+        uint8_t tone_count = 0;
 
         do
         {
             try
             {
                 //Get frequency in Hz for each sensor, then give to DAC controller
-                const uint8_t frequency_count_prev = frequency_count;
-                frequency_count = 0;
+                const uint8_t tone_count_prev = tone_count;
+                tone_count = 0;
 
                 bool has_change = false;
 
-                for (const auto t : app_state->current_frequencies)
+                for (const auto t : app_state->current_tones)
                 {
-                    if (!check_frequency_equivalency(t, 0)) //Frequency = 0 -> Invalid
+                    if (!t.is_invalid() && !t.is_equivalent(0)) //Frequency = 0 -> Invalid
                     {
-                        if (!check_frequency_equivalency(t, frequencies[frequency_count])) //Frequency has changed since last iteration
+                        if (!t.is_equivalent(tones[tone_count])) //Frequency has changed since last iteration
                         {
                             has_change = true;
-                            frequencies[frequency_count] = t;
+                            tones[tone_count] = t;
                         }
 
-                        frequency_count++;
+                        tone_count++;
                     }
                 }
 
-                has_change |= frequency_count != frequency_count_prev;
+                has_change |= tone_count != tone_count_prev;
 
                 if (has_change) //DAC only requires update on change
                 {
-                    dac_controller.write(frequencies, frequency_count);
+                    dac_controller.write(tones, tone_count);
                 }
             }
             catch (std::exception& e)

@@ -8,6 +8,7 @@
 #include <cmath>
 
 #include "app_common.h"
+#include "musical_note_data.h"
 
 constexpr float FREQUENCY_C0 = 16.35f; //Frequency, in hz, for C in octave 0
 constexpr float FREQUENCY_HZ_EPS = 0.1; //Consider fr within this amount to be equivalent
@@ -32,6 +33,7 @@ enum struct musical_note : uint8_t
     MAX
 };
 
+
 [[nodiscard]]
 constexpr float musical_note_freq_hz(const musical_note note, const uint8_t octave)
 {
@@ -39,9 +41,42 @@ constexpr float musical_note_freq_hz(const musical_note note, const uint8_t octa
 }
 
 [[nodiscard]]
+consteval const SineTable* get_sine_table_from_note_consteval(const musical_note note, const uint8_t octave)
+{
+    assert(static_cast<size_t>(note) < sine_tables::ALL_SINE_TABLES_LENGTH_0
+        && octave < sine_tables::ALL_SINE_TABLES_LENGTH_1);
+    return &sine_tables::ALL_SINE_TABLES[static_cast<size_t>(note)][octave];
+}
+
+[[nodiscard]]
+inline const SineTable* get_sine_table_from_note(const musical_note note, const uint8_t octave)
+{
+    assert(static_cast<size_t>(note) < sine_tables::ALL_SINE_TABLES_LENGTH_0
+        && octave < sine_tables::ALL_SINE_TABLES_LENGTH_1);
+    return &sine_tables::ALL_SINE_TABLES[static_cast<size_t>(note)][octave];
+}
+
+[[nodiscard]]
 constexpr float hz_to_megahz(const float hz) { return hz / US_PER_SECOND; }
 
 [[nodiscard]]
 constexpr bool check_frequency_equivalency(const float a, const float b) { return std::abs(a - b) <= FREQUENCY_HZ_EPS; }
+
+struct musical_note_tone
+{
+    musical_note note;
+    uint8_t octave;
+
+    [[nodiscard]] bool is_invalid() const { return octave == 0xFF; }
+    [[nodiscard]] const SineTable* sine_table() const { return get_sine_table(*this); }
+    [[nodiscard]] float frequency_hz() const { return is_invalid()? 0 : musical_note_freq_hz(note, octave); }
+    [[nodiscard]] bool is_equivalent(const musical_note_tone& other) const { return check_frequency_equivalency(frequency_hz(), other.frequency_hz()); }
+    [[nodiscard]] bool is_equivalent(const float other_hz) const { return check_frequency_equivalency(frequency_hz(), other_hz); }
+
+    [[nodiscard]] static consteval musical_note_tone create_invalid() { return musical_note_tone(musical_note::C, 0xFF); }
+
+    [[nodiscard]] static consteval const SineTable* get_sine_table_consteval(const musical_note_tone& tone) { return get_sine_table_from_note_consteval(tone.note, tone.octave); }
+    [[nodiscard]] static const SineTable* get_sine_table(const musical_note_tone& tone) { return get_sine_table_from_note(tone.note, tone.octave); }
+};
 
 #endif //AUDIO_CONTROLLER_NOTES_H

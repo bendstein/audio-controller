@@ -9,10 +9,9 @@ void app_main()
     //Set default log level for all
     esp_log_level_set("*", ESP_LOG_INFO);
 
-    //If VERBOSE is set, enable verbose logging
-    if (FLAG_VERBOSE)
+    if constexpr (FLAG_VERBOSE) //Enable verbose logging for specific tags
     {
-        esp_log_level_set(LOG_VERBOSE_TAG, ESP_LOG_VERBOSE);
+        esp_log_level_set("dac_controller.h", ESP_LOG_VERBOSE);
     }
 
 #ifdef CFG_GP2Y0E02B_I2C_ADDR
@@ -24,7 +23,7 @@ void app_main()
     {
         TaskHandle_t log_tasks_task = nullptr;
 
-        if (FLAG_VERBOSE)
+        if constexpr (FLAG_VERBOSE)
         {
             VERBOSE("Creating log_tasks_task.");
 

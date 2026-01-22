@@ -16,7 +16,6 @@
 #include <sys/_timeval.h>
 
 // #define LOG_VERBOSE //If present, enable VERBOSE log macros, as well as additional debug info
-#define LOG_VERBOSE_TAG "AC-VRBS" //Tag to use in the VERBOSE log macro
 
 #ifdef LOG_VERBOSE
 //Whether the application should perform additional debugging/logging logic
@@ -166,11 +165,12 @@ inline void loge(const std::string& tag, const std::string& message)
 
 //Only verbose log if enabled
 #ifdef LOG_VERBOSE
-#define VERBOSE(message) logv(LOG_VERBOSE_TAG, std::format("({}:{}:{}) {}", __FILE_NAME__, __func__, __LINE__, message))
-#define VERBOSE_LB(message) logv(LOG_VERBOSE_TAG, std::format("({}:{}:{})\r\n{}", __FILE_NAME__, __func__, __LINE__, message))
-#define FVERBOSE(message, ...) logv(LOG_VERBOSE_TAG, std::format("({}:{}:{}) {}", __FILE_NAME__, __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
-#define FVERBOSE_LB(message, ...) logv(LOG_VERBOSE_TAG, std::format("({}:{}:{})\r\n{}", __FILE_NAME__, __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
+#define VERBOSE(message) logv(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, message))
+#define VERBOSE_LB(message) logv(__FILE_NAME__, std::format("({}:{})\r\n{}", __func__, __LINE__, message))
+#define FVERBOSE(message, ...) logv(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
+#define FVERBOSE_LB(message, ...) logv(__FILE_NAME__, std::format("({}:{})\r\n{}", __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
 #else
+#define ALLOW_VERBOSE() {}
 #define VERBOSE(message) {}
 #define VERBOSE_LB(message) {}
 #define FVERBOSE(message, ...) {}

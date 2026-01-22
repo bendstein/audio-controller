@@ -9,14 +9,15 @@
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
 constexpr size_t BUS_COUNT = 2;
-constexpr size_t SENSORS_COUNT = 2;
+constexpr size_t SENSORS_COUNT = 1;
 constexpr size_t SENSOR_TONES_LEN = 3;
 
-const float SENSOR_TONES[SENSORS_COUNT][SENSOR_TONES_LEN]
+constexpr musical_note_tone SENSOR_TONES[SENSORS_COUNT][SENSOR_TONES_LEN]
 {
-    { musical_note_freq_hz(musical_note::A, 4), musical_note_freq_hz(musical_note::A, 5), musical_note_freq_hz(musical_note::A, 3) },
-    { musical_note_freq_hz(musical_note::C, 5), musical_note_freq_hz(musical_note::C, 6), musical_note_freq_hz(musical_note::C, 4) }
+    { musical_note_tone(musical_note::A, 4), musical_note_tone(musical_note::A, 5), musical_note_tone(musical_note::A, 3) },
+    // { musical_note_tone(musical_note::C, 5), musical_note_tone(musical_note::C, 6), musical_note_tone(musical_note::C, 4) }
 };
+
 constexpr float SENSOR_TONES_BREAKPOINTS[SENSOR_TONES_LEN] = {
     0.4,
     0.8,
@@ -30,6 +31,6 @@ struct app_state
     std::unique_ptr<TaskHandle_t> dac_write_task;
     std::unique_ptr<gp2y0e02b::distance_sensor> distance_sensors[SENSORS_COUNT];
     std::unique_ptr<TaskHandle_t> sensor_tasks[SENSORS_COUNT];
-    float current_frequencies[SENSORS_COUNT];
+    musical_note_tone current_tones[SENSORS_COUNT];
 };
 #endif //AUDIO_CONTROLLER_APP_STATE_H

@@ -31,22 +31,22 @@ class dac_controller
 public:
     static constexpr auto LOG_KEY = "[DAC Ctrl]";
 private:
-    static constexpr auto TASK_NAME = "[DAC Ctrl Task]";
-    static constexpr auto WB_TASK_NAME = "[DAC Ctrl WB Task]";
+    static constexpr auto TASK_NAME = "[DAC Ctrl]";
+    static constexpr auto WB_TASK_NAME = "[DAC Ctrl WB]";
     static constexpr auto TASK_PRIORITY = 1;
     static constexpr auto TASK_STACK_SIZE = 0x1000;
-    static constexpr auto WB_TASK_PRIORITY = 1;
+    static constexpr auto WB_TASK_PRIORITY = 4;
     static constexpr auto WB_TASK_STACK_SIZE = 0x1000;
 
     static constexpr auto TASK_MESSAGE_INDEX_WB_READY = 1;
     static constexpr auto WB_TASK_MESSAGE_INDEX_READY = 1;
 
-    static constexpr int DAC_CFG_DESC_NUM = 8;
-    static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 10;
-    static constexpr int DAC_CFG_SAMPLE_RATE = 1 << 17;
+    static constexpr int DAC_CFG_DESC_NUM = 10;
+    static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 11;
+    static constexpr int DAC_CFG_SAMPLE_RATE = sine_tables::SAMPLE_RATE;
     static constexpr int DAC_CFG_OFFSET = 0;
 
-    static constexpr size_t DAC_DOUBLE_BUFFER_SIZE = 1 << 12;
+    static constexpr size_t DAC_DOUBLE_BUFFER_SIZE = 1 << 14;
     static constexpr float DAC_DOUBLE_BUFFER_TIME_SECONDS = static_cast<float>(DAC_DOUBLE_BUFFER_SIZE) / DAC_CFG_SAMPLE_RATE;
     static constexpr size_t MOVING_AVERAGE_LEN = 3;
 
@@ -64,12 +64,13 @@ private:
     uint8_t* active_buffer;
     uint8_t* working_buffer;
 
-    std::atomic_bool freq_buffer_changed { true };
-    size_t freq_buffer_len = 0;
-    float* freq_buffer;
+    std::atomic_bool tone_data_changed { true };
+    size_t tone_data_len = 0;
+    musical_note_tone* tone_data;
 
-    SemaphoreHandle_t frequency_mux;
+    SemaphoreHandle_t tones_mux;
     SemaphoreHandle_t swap_buffers_mux;
+    SemaphoreHandle_t task_started_sem;
     QueueHandle_t dac_write_queue_handle;
 
     size_t swap_buffers(const size_t working_buffer_len)
@@ -122,6 +123,8 @@ private:
 
                 size_t working_buffer_len = 0;
 
+                bool first = true;
+
                 FLOGI("{} Task {} starting main loop.", LOG_KEY, WB_TASK_NAME);
 
                 do
@@ -129,19 +132,16 @@ private:
                     FVERBOSE("{} Task {} wait for frequency data.", LOG_KEY, WB_TASK_NAME);
 
                     //Wait for frequencies to be available to create buffer data from
-                    if (const auto maybe_frequencies_handle = rtos_semaphore_handle::try_take(self->frequency_mux);
+                    if (const auto maybe_frequencies_handle = rtos_semaphore_handle::try_take(self->tones_mux);
                         maybe_frequencies_handle != nullptr)
                     {
-                        if (self->freq_buffer_changed) //Reset offset on frequency change
+                        if (self->tone_data_changed) //Reset offset on frequency change
                         {
-                            self->freq_buffer_changed = false;
+                            self->tone_data_changed = false;
                             offset = 0;
                         }
 
                         working_buffer_len = self->populate_working_buffer(offset);
-
-                        if (working_buffer_len > DAC_WRITE_QUEUE_CAPACITY)
-                            working_buffer_len -= DAC_WRITE_QUEUE_CAPACITY;
 
                         offset += working_buffer_len;
                     }
@@ -152,9 +152,35 @@ private:
                         continue;
                     }
 
+                    //On first time, await main task start
+                    if (first)
+                    {
+                        do
+                        {
+                            FLOGI("{} Task {} waiting for task {} to start.", LOG_KEY, WB_TASK_NAME, TASK_NAME);
+
+                            if (const auto take_result = xSemaphoreTake(self->task_started_sem, portMAX_DELAY);
+                                take_result == pdPASS)
+                            { }
+                            else
+                            {
+                                FLOGE("{} Task {} didn't successfully acquire semaphore indicating that task {} has started.", LOG_KEY, WB_TASK_NAME, TASK_NAME);
+                                vTaskDelay(10 / portTICK_PERIOD_MS);
+                                continue;
+                            }
+
+                            break;
+                        }
+                        while (true);
+
+                        first = false;
+                    }
+
                     //Indicate that working buffer is ready for swap, including its length
                     FVERBOSE("{} Task {} sending message {} to task {}:{}.", LOG_KEY, WB_TASK_NAME, working_buffer_len, TASK_NAME, TASK_MESSAGE_INDEX_WB_READY);
                     xTaskNotifyIndexed(self->task, TASK_MESSAGE_INDEX_WB_READY, working_buffer_len, eSetValueWithOverwrite);
+
+                    vTaskDelay(10 / portTICK_PERIOD_MS);
 
                     //Wait for message to recalculate working buffer
                     FVERBOSE("{} Task {} waiting for message to recalculate (ndx {}).", LOG_KEY, WB_TASK_NAME, WB_TASK_MESSAGE_INDEX_READY);
@@ -195,6 +221,9 @@ private:
             if (const auto self = static_cast<dac_controller*>(task_param);
                 self != nullptr)
             {
+                //Flag that task has started
+                xSemaphoreGive(self->task_started_sem);
+
                 uint32_t working_buffer_len;
 
                 FLOGI("{} Task {} waiting for initial buffer calculation.", LOG_KEY, TASK_NAME);
@@ -247,7 +276,15 @@ private:
                         //Wait for interrupt to enqueue event
                         FVERBOSE("{} Task {} waiting for next DAC event.", LOG_KEY, TASK_NAME);
 
-                        xQueueReceive(self->dac_write_queue_handle, &ev, portMAX_DELAY);
+                        if (self->tone_data_changed) //If frequencies changed, recalculate buffer
+                            break;
+
+                        //Wait for next event, continuing to next iteration if takes too long
+                        if (!xQueueReceive(self->dac_write_queue_handle, &ev, 5 / portTICK_PERIOD_MS))
+                            continue;
+
+                        if (self->tone_data_changed) //If frequencies changed, recalculate buffer
+                            break;
 
                         size_t loaded = 0;
 
@@ -263,7 +300,7 @@ private:
                             cursor += loaded;
                         }
 
-                        FVERBOSE("{} Task {} wrote {} bytes to DAC.", LOG_KEY, TASK_NAME, loaded);
+                        // FVERBOSE("{} Task {} wrote {} bytes to DAC.", LOG_KEY, TASK_NAME, loaded);
                     }
 
                     //Swap in working buffer
@@ -299,39 +336,58 @@ private:
         do { vTaskDelay(portMAX_DELAY); } while (true);
     }
 
-    [[nodiscard]] size_t populate_working_buffer(const size_t n) const
+    [[nodiscard]] size_t populate_working_buffer(const size_t offset) const
     {
+        FVERBOSE("{} Populate working buffer starting at offset {}", LOG_KEY, offset);
+
         static_assert(DAC_DOUBLE_BUFFER_SIZE < std::numeric_limits<float>::max());
         static_assert(FREQ_BUFFER_CAPACITY < std::numeric_limits<float>::max());
         assert(handle != nullptr);
-        assert(freq_buffer_len < FREQ_BUFFER_CAPACITY);
+        assert(tone_data_len < FREQ_BUFFER_CAPACITY);
 
-        if (freq_buffer_len == 0) //No frequency data given
+        if (tone_data_len == 0) //No frequency data given
             return 0;
 
         for (size_t i = 0; i < DAC_DOUBLE_BUFFER_SIZE; i++)
         {
-            //Current time is the ratio through the buffer, scaled to the amount of time that the buffer corresponds to
-            //Add n as initial offset, to reflect whether this is a continuation of the same set of frequencies
-            const auto t = (static_cast<float>(i + n) / DAC_DOUBLE_BUFFER_SIZE) * DAC_DOUBLE_BUFFER_TIME_SECONDS;
+            // //Current time is the ratio through the buffer, scaled to the amount of time that the buffer corresponds to
+            // //Add n as initial offset, to reflect whether this is a continuation of the same set of frequencies
+            // const auto t = (static_cast<float>(i + offset) / DAC_DOUBLE_BUFFER_SIZE) * DAC_DOUBLE_BUFFER_TIME_SECONDS;
 
-            //Sum up sine waves, skipping 0s
-            float sum = 0.f;
-            size_t freq_used = 0;
+            // //Sum up sine waves, skipping 0s
+            // float sum = 0.f;
+            // size_t freq_used = 0;
+            //
+            // for (size_t f = 0; f < tone_data_len; f++)
+            // {
+            //     if (const auto freq = tone_data[f]; freq > 0)
+            //     {
+            //         sum += (1.f + sinf(2.f * static_cast<float>(M_PI) * static_cast<float>(t) * freq)) / 2.f;
+            //         freq_used++;
+            //     }
+            // }
+            //
+            // //If no frequency data, use 0, otherwise, average sine waves and scale to byte
+            // const auto next_value = freq_used == 0
+            //     ? 0
+            //     : static_cast<uint8_t>(std::clamp(static_cast<int>(std::round(0xFF * sum / static_cast<float>(freq_used))), 0, 0xFF));
 
-            for (size_t f = 0; f < freq_buffer_len; f++)
+            //Use data from pre-calculated sine wave tables, average together
+            uint32_t sum = 0;
+            size_t tones_used = 0;
+
+            for (auto f = 0; f < tone_data_len; f++)
             {
-                if (const auto freq = freq_buffer[f]; freq > 0)
+                if (const auto& tone = tone_data[f]; !tone.is_invalid())
                 {
-                    sum += (1.f + sinf(2.f * static_cast<float>(M_PI) * static_cast<float>(t) * freq)) / 2.f;
-                    freq_used++;
+                    sum += tone.sine_table()->get_value(i + offset);
+                    tones_used++;
                 }
             }
 
-            //If no frequency data, use 0, otherwise, average sine waves and scale to byte
-            const auto next_value = freq_used == 0
+            const auto next_value = tones_used == 0
                 ? 0
-                : static_cast<uint8_t>(std::clamp(static_cast<int>(std::round(0xFF * sum / static_cast<float>(freq_used))), 0, 0xFF));
+                : sum / tones_used;
 
             //Apply moving average filter to smooth data
             int moving_average_sum = next_value;
@@ -417,13 +473,14 @@ private:
 public:
     dac_controller() : handle(nullptr), task(nullptr), wb_task(nullptr)
     {
-        frequency_mux = xSemaphoreCreateMutex();
+        tones_mux = xSemaphoreCreateMutex();
         swap_buffers_mux = xSemaphoreCreateMutex();
+        task_started_sem = xSemaphoreCreateBinary();
         dac_write_queue_handle = xQueueCreate(DAC_WRITE_QUEUE_CAPACITY, sizeof(dac_event_data_t));
 
         active_buffer = new uint8_t[DAC_DOUBLE_BUFFER_SIZE] {};
         working_buffer = new uint8_t[DAC_DOUBLE_BUFFER_SIZE] {};
-        freq_buffer = new float[FREQ_BUFFER_CAPACITY] {};
+        tone_data = new musical_note_tone[FREQ_BUFFER_CAPACITY] {};
     }
 
     dac_controller(const dac_controller& other) = delete;
@@ -492,32 +549,32 @@ public:
         return dac_controller_start_result::ERR;
     }
 
-    void write(const float data[], const size_t data_len)
+    void write(const musical_note_tone data[], const size_t data_len)
     {
         assert(data_len > 0 && data_len <= FREQ_BUFFER_CAPACITY);
 
         FVERBOSE("{} Waiting to write {} frequencies to DAC controller.", LOG_KEY, data_len);
 
         //Wait to be able to record frequency data
-        if (const auto maybe_frequencies_handle = rtos_semaphore_handle::try_take(frequency_mux);
+        if (const auto maybe_frequencies_handle = rtos_semaphore_handle::try_take(tones_mux);
             maybe_frequencies_handle != nullptr)
         {
-            freq_buffer_changed = false;
+            tone_data_changed = false;
 
             for (size_t i = 0; i < data_len; i++)
             {
-                if (!check_frequency_equivalency(freq_buffer[i], data[i]))
+                if (!tone_data[i].is_equivalent(data[i]))
                 {
-                    freq_buffer_changed = true;
-                    freq_buffer[i] = data[i];
+                    tone_data_changed = true;
+                    tone_data[i] = data[i];
                 }
             }
 
-            if (freq_buffer_len != data_len)
+            if (tone_data_len != data_len)
             {
                 FVERBOSE("{} Frequency data was updated.", LOG_KEY);
-                freq_buffer_changed = true;
-                freq_buffer_len = data_len;
+                tone_data_changed = true;
+                tone_data_len = data_len;
 
                 //If changed, send message to update working buffer
                 if (wb_task != nullptr)
@@ -653,7 +710,7 @@ public:
             }
         }
 
-        delete[] freq_buffer;
+        delete[] tone_data;
         delete[] active_buffer;
         delete[] working_buffer;
     }
