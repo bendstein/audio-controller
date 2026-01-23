@@ -44,16 +44,18 @@ constexpr float musical_note_freq_hz(const musical_note note, const uint8_t octa
 consteval const SineTable* get_sine_table_from_note_consteval(const musical_note note, const uint8_t octave)
 {
     assert(static_cast<size_t>(note) < sine_tables::ALL_SINE_TABLES_LENGTH_0
-        && octave < sine_tables::ALL_SINE_TABLES_LENGTH_1);
-    return &sine_tables::ALL_SINE_TABLES[static_cast<size_t>(note)][octave];
+        && octave >= sine_tables::MIN_OCTAVE
+        && octave <= sine_tables::MAX_OCTAVE);
+    return &sine_tables::ALL_SINE_TABLES[static_cast<size_t>(note)][octave - sine_tables::MIN_OCTAVE];
 }
 
 [[nodiscard]]
 inline const SineTable* get_sine_table_from_note(const musical_note note, const uint8_t octave)
 {
     assert(static_cast<size_t>(note) < sine_tables::ALL_SINE_TABLES_LENGTH_0
-        && octave < sine_tables::ALL_SINE_TABLES_LENGTH_1);
-    return &sine_tables::ALL_SINE_TABLES[static_cast<size_t>(note)][octave];
+        && octave >= sine_tables::MIN_OCTAVE
+        && octave <= sine_tables::MAX_OCTAVE);
+    return &sine_tables::ALL_SINE_TABLES[static_cast<size_t>(note)][octave - sine_tables::MIN_OCTAVE];
 }
 
 [[nodiscard]]
