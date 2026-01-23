@@ -1,6 +1,6 @@
 const NOW = new Date();
 const FREQUENCY_C0 = 16.35;
-const SAMPLE_RATE = 1 << 17;
+const SAMPLE_RATE = 131072; //1 << 17
 const OCTAVES = [0, 7];
 const NOTE_SYMBOLS = [
     ['C'],
@@ -26,7 +26,7 @@ function ParseArgs(argv) {
         if(arg.startsWith('--')) {
             arg = arg.substring(2);
 
-            if(arg == '')
+            if(arg === '')
                 continue;
 
             if(i + 1 < argv.length) {
@@ -51,12 +51,12 @@ function ParseArgs(argv) {
  */
 function musical_note_freq_hz(note, octave)
 {
-    return FREQUENCY_C0 * Math.pow(2, (note + (octave * NOTE_SYMBOLS.length)) / (NOTE_SYMBOLS.length * 1.0));
+    return FREQUENCY_C0 * Math.pow(2, (note + (octave * NOTE_SYMBOLS.length)) / NOTE_SYMBOLS.length);
 }
 
 /**
  * Map the given value between 0 and 1 to a byte from 0 to 255
- * @param {number} value [0-1]
+ * @param {number} value from 0-1
  * @returns {number} [0-255]
  */
 function map_to_byte(value) {
@@ -81,7 +81,7 @@ function generate_table(note, octave) {
     let table = [];
 
     for(let i = 0; i < samples_per_period_ceiling; i++) {
-        let t = i * SAMPLE_RATE;
+        let t = i / SAMPLE_RATE;
 
         //Calculate sine wave value at t, translating and scaling to lie
         //between [0, 1]
@@ -93,7 +93,21 @@ function generate_table(note, octave) {
     return table;
 }
 
+function print_table(note, octave) {
+    generate_table(note, octave).forEach(value => {
+        let s = '';
+
+        for(let i = 0; i < value; i++)
+            s += '.';
+
+        console.log(`[0x${value.toString(16).toUpperCase().padStart(2, '0')}] | ${s}`);
+    });
+}
+
 const args = ParseArgs(process.argv);
+
+if(!args.output)
+    throw new Error(`Output file (--output) is required.`);
 
 //Generate table for all specified notes/octaves
 let note_tables = [];
@@ -166,8 +180,7 @@ namespace sine_tables {
 
 console.log(file_content);
 
-if(!args.output)
-    throw new Error(`Output file (--output) is required.`);
+// print_table(9, 4);
 
 console.log(`Saving file to ${args.output}`);
 

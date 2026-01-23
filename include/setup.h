@@ -21,7 +21,7 @@ static constexpr i2c_master_create_cfg BUS_OPTIONS[BUS_COUNT] = {
 
 static constexpr setup_cfg_dev SENSOR_CFG[SENSORS_COUNT] = {
     { .address = gp2y0e02b::distance_sensor::I2C_ADDR_DFT, .bus_num = 0 },
-    // { .address = gp2y0e02b::distance_sensor::I2C_ADDR_DFT, .bus_num = 1 }
+    { .address = gp2y0e02b::distance_sensor::I2C_ADDR_DFT, .bus_num = 1 }
 };
 
 // static constexpr setup_cfg_dev DAC_CFG = { .address = mcp4725::dac::I2C_ADDR_DFT, .bus_num = 0 };

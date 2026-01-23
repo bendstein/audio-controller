@@ -9,13 +9,13 @@
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
 constexpr size_t BUS_COUNT = 2;
-constexpr size_t SENSORS_COUNT = 1;
+constexpr size_t SENSORS_COUNT = 2;
 constexpr size_t SENSOR_TONES_LEN = 3;
 
 constexpr musical_note_tone SENSOR_TONES[SENSORS_COUNT][SENSOR_TONES_LEN]
 {
-    { musical_note_tone(musical_note::A, 4), musical_note_tone(musical_note::A, 5), musical_note_tone(musical_note::A, 3) },
-    // { musical_note_tone(musical_note::C, 5), musical_note_tone(musical_note::C, 6), musical_note_tone(musical_note::C, 4) }
+    { musical_note_tone(musical_note::A, 4), musical_note_tone(musical_note::A, 5), musical_note_tone(musical_note::A, 4) },
+    { musical_note_tone(musical_note::C, 3), musical_note_tone(musical_note::C, 4), musical_note_tone(musical_note::C, 5) }
 };
 
 constexpr float SENSOR_TONES_BREAKPOINTS[SENSOR_TONES_LEN] = {
