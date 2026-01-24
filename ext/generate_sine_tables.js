@@ -2,19 +2,33 @@ const NOW = new Date();
 const FREQUENCY_C0 = 16.35;
 const SAMPLE_RATE = 131072; //1 << 17
 const OCTAVES = [2, 6];
+
+const C = 0;
+const C_Sharp = 1; const D_Flat = C_Sharp;
+const D = 2;
+const D_Sharp = 3; const E_Flat = D_Sharp;
+const E = 4;
+const F = 5;
+const F_Sharp  = 6; const G_Flat = F_Sharp;
+const G = 7;
+const G_Sharp = 8; const A_Flat = G_Sharp;
+const A = 9;
+const A_Sharp = 10; const B_Flat = A_Sharp;
+const B = 11;
+
 const NOTE_SYMBOLS = [
-    ['C'],
-    ['C_Sharp', 'D_Flat'],
-    ['D'],
-    ['D_Sharp', 'E_Flat'],
-    ['E'],
-    ['F'],
-    ['F_Sharp', 'G_Flat'],
-    ['G'],
-    ['G_Sharp', 'A_Flat'],
-    ['A'],
-    ['A_Sharp', 'B_Flat'],
-    ['B']
+    Object.keys({C}),
+    Object.keys({C_Sharp, D_Flat}),
+    Object.keys({D}),
+    Object.keys({D_Sharp, E_Flat}),
+    Object.keys({E}),
+    Object.keys({F}),
+    Object.keys({F_Sharp, G_Flat}),
+    Object.keys({G}),
+    Object.keys({G_Sharp, A_Flat}),
+    Object.keys({A}),
+    Object.keys({A_Sharp, B_Flat}),
+    Object.keys({B}),
 ];
 
 function ParseArgs(argv) {
@@ -192,7 +206,7 @@ namespace sine_tables {
 
 console.log(file_content);
 
-// print_table(9, 4);
+// print_table(A, 4);
 
 console.log(`Total bytes: ${note_tables.flatMap(n => n.map(n => n.length)).reduce((a, b) => a + b)}`)
 
