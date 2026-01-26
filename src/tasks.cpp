@@ -5,7 +5,6 @@
 
 #include <algorithm>
 
-#include "i2c/mcp4725.h"
 #include "audio/dac_controller.h"
 
 #include <freertos/FreeRTOS.h>
@@ -24,54 +23,56 @@ void distance_sensor_task(void* task_param_pointer)
         if (task_param_pointer == nullptr)
             throw std::invalid_argument("No data was provided to distance_sensor_task.");
 
-        const auto [app_state, sensor_index] = *static_cast<sensor_task_param*>(task_param_pointer);
-
-        if (app_state->distance_sensors[sensor_index] == nullptr)
-            throw std::invalid_argument("No sensor was provided to distance_sensor_task.");
+        const auto [app_state, bus_index] = *static_cast<bus_sensor_task_param*>(task_param_pointer);
+        const auto& sensors = app_state->distance_sensors[bus_index];
 
         for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
         {
             try
             {
-                uint8_t distance;
-
-                const auto current_max_distance = app_state->distance_sensors[sensor_index]->get_distance_shift_value();
-
-                if (app_state->distance_sensors[sensor_index]->try_update_distance(&distance))
+                for (auto s = 0; s < sensors.size(); s++)
                 {
-                    // FLOGI("{} {}cm", app_state->distance_sensors[sensor_index]->get_log_key(), distance);
-                }
-                else
-                {
-                    //Use max distance (i.e. no obstruction) on failure
-                    distance = current_max_distance;
-                }
+                    auto& sensor = sensors[s];
+                    const auto sensor_index = sensor->get_index();
 
-                //Get the frequency corresponding to the sensor's given distance
-                const auto ratio = static_cast<float>(distance) / static_cast<float>(current_max_distance);
+                    uint8_t distance;
 
-                bool assigned = false;
+                    const auto current_max_distance = sensor->get_distance_shift_value();
 
-                for (int j = 0; j < SENSOR_TONES_LEN; j++)
-                {
-                    if (const auto current_breakpoint = SENSOR_TONES_BREAKPOINTS[j];
-                        ratio <= current_breakpoint)
+                    if (sensor->try_update_distance(&distance))
                     {
-                        app_state->current_tones[sensor_index] = SENSOR_TONES[sensor_index][j];
-                        assigned = true;
-                        break;
+                        // FLOGI("{} {}cm", app_state->distance_sensors[sensor_index]->get_log_key(), distance);
                     }
+                    else
+                    {
+                        //Use max distance (i.e. no obstruction) on failure
+                        distance = current_max_distance;
+                    }
+
+                    //Get the frequency corresponding to the sensor's given distance
+                    const auto ratio = static_cast<float>(distance) / static_cast<float>(current_max_distance);
+
+                    auto new_tone = musical_note_tone::create_invalid();
+
+                    for (int j = 0; j < SENSOR_TONES_LEN; j++)
+                    {
+                        if (const auto current_breakpoint = SENSOR_TONES_BREAKPOINTS[j];
+                            ratio <= current_breakpoint)
+                        {
+                            new_tone = SENSOR_TONES[sensor_index][j];
+                            break;
+                        }
+                    }
+
+                    app_state->current_tones[sensor_index] = new_tone;
                 }
 
-                if (!assigned)
-                    app_state->current_tones[sensor_index] = musical_note_tone::create_invalid();
-
-                vTaskDelay(100 / portTICK_PERIOD_US);
+                vTaskDelay(10 / portTICK_PERIOD_MS);
             }
             catch (std::exception& e)
             {
-                FLOGE("{} An exception occurred during distance sensor task (n = {}): {}",
-                    app_state->distance_sensors[sensor_index]->get_log_key(),
+                FLOGE("[Bus {}] An exception occurred during distance sensor task (n = {}): {}",
+                    bus_index,
                     i,
                     e.what());
             }

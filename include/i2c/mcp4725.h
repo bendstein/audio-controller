@@ -60,13 +60,6 @@ namespace mcp4725
                 address,
                 reinterpret_cast<uintptr_t>(handle));
         }
-
-        dac() = delete;
-        dac(const dac& other) = delete;
-        dac(dac&& other) = delete;
-        dac& operator=(const dac& other) = delete;
-        dac& operator=(dac&& other) = delete;
-
     public:
         dac(i2c_master_dev_handle_t device_handle, const uint8_t address)
             : handle(device_handle), address(address)
@@ -80,6 +73,12 @@ namespace mcp4725
             timeout_ms = timeout;
             log_key = make_log_key();
         }
+
+        dac() = delete;
+        dac(const dac& other) = delete;
+        dac(dac&& other) = delete;
+        dac& operator=(const dac& other) = delete;
+        dac& operator=(dac&& other) = delete;
 
         [[nodiscard]] int32_t get_timeout_ms() const { return timeout_ms; }
         void set_timeout(const int32_t timeout) { timeout_ms = timeout; }

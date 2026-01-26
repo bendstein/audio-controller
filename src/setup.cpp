@@ -58,13 +58,14 @@ void init_i2c_buses(app_state* app_state)
 
 void init_distance_sensors(app_state* setup)
 {
+    //Init each distance sensor
     for (auto i = 0; i < SENSORS_COUNT; i++)
     {
         bool setup_successful = true;
         const auto [ addr, bus_num ] = SENSOR_CFG[i];
 
-        setup->distance_sensors[i] = nullptr;
-        setup->sensor_tasks[i] = nullptr;
+        auto& sensors = setup->distance_sensors[bus_num];
+        const auto sensor_index = sensors.grow();
 
         if (bus_num >= BUS_COUNT || setup->i2c_buses[bus_num] == nullptr)
         {
@@ -78,65 +79,43 @@ void init_distance_sensors(app_state* setup)
             if (auto maybe_sensor = gp2y0e02b::distance_sensor::try_create_on_bus(
                 setup->i2c_buses[bus_num]->get_handle(),
                 addr,
+                i,
                 gp2y0e02b::distance_sensor::TIMEOUT_MS_DFT
             ); maybe_sensor != nullptr)
             {
-                setup->distance_sensors[i].swap(maybe_sensor);
+                sensors[sensor_index].swap(maybe_sensor);
 
                 //Configure sensor
-                FLOGI("{} Configuring sensor.", setup->distance_sensors[i]->get_log_key());
+                FLOGI("{} Configuring sensor.", sensors[sensor_index]->get_log_key());
 
                 //Perform soft reset of sensor to make sure
                 //all settings are at initial default
-                if (!setup->distance_sensors[i]->try_soft_reset())
+                if (!sensors[sensor_index]->try_soft_reset())
                 {
                     setup_successful = false;
-                    FLOGE("{} Failed to perform software reset.", setup->distance_sensors[i]->get_log_key());
+                    FLOGE("{} Failed to perform software reset.", sensors[sensor_index]->get_log_key());
                 }
 
-                if (!setup->distance_sensors[i]->try_apply_distance_shift(gp2y0e02b::shift_bit::cm_128))
+                if (!sensors[sensor_index]->try_apply_distance_shift(gp2y0e02b::shift_bit::cm_128))
                 {
                     setup_successful = false;
-                    FLOGE("{} Failed to apply distance shift.", setup->distance_sensors[i]->get_log_key());
+                    FLOGE("{} Failed to apply distance shift.", sensors[sensor_index]->get_log_key());
                 }
 
                 if (setup_successful)
                 {
-                    FLOGI("{} Successfully configured distance sensor #{}.", setup->distance_sensors[i]->get_log_key(), i);
-
-                    BaseType_t create_task_result;
-
-                    if (try_create_distance_sensor_task(
-                        std::format("gp2y-{}-{:02X}", i, addr),
-                        &create_task_result,
-                        i,
-                        setup
-                    ))
-                    {
-                        FLOGI("{} Started task 0x{:08X} for distance sensor #{}.",
-                            setup->distance_sensors[i]->get_log_key(),
-                            reinterpret_cast<uintptr_t>(*setup->sensor_tasks[i]), i);
-                    }
-                    else
-                    {
-                        setup_successful = false;
-                        FLOGE("{} Failed to start task for distance sensor #{}. ({})",
-                            setup->distance_sensors[i]->get_log_key(),
-                            i, create_task_result);
-                    }
+                    FLOGI("{} Successfully configured distance sensor #{}.", sensors[sensor_index]->get_log_key(), i);
                 }
                 else
                 {
                     setup_successful = false;
-                    FLOGE("{} Failed to configure distance sensor #{}.",
-                        setup->distance_sensors[i]->get_log_key(), i);
+                    FLOGE("{} Failed to configure distance sensor #{}.", sensors[sensor_index]->get_log_key(), i);
                 }
             }
             else
             {
                 setup_successful = false;
-                FLOGE("[distance sensor 0x{:02X}] Failed to create distance sensor #{}.",
-                    addr, i);
+                FLOGE("[distance sensor 0x{:02X}] Failed to create distance sensor #{}.", addr, i);
             }
         }
         catch (const std::exception& e)
@@ -146,18 +125,36 @@ void init_distance_sensors(app_state* setup)
                 addr, i, e.what());
         }
 
+        //Remove sensor if not successfully set up
         if (!setup_successful)
         {
-            //Clear sensor/task if unsuccessful
-            if (setup->sensor_tasks[i] != nullptr)
-            {
-                if (const auto created_task = *setup->sensor_tasks[i]; created_task != nullptr)
-                    vTaskDelete(created_task);
+            sensors.remove_last();
+        }
+    }
 
-                setup->sensor_tasks[i] = nullptr;
-            }
+    //Setup tasks for each bus
+    for (auto i = 0; i < BUS_COUNT; i++)
+    {
+        FLOGI("Creating distance sensor task for I2C bus {}.", i);
 
-            setup->distance_sensors[i] = nullptr;
+        if (setup->distance_sensors[i].empty())
+        {
+            FLOGW("I2C bus {} has no distance sensors.", i);
+            continue;
+        }
+
+        BaseType_t create_task_result;
+        if (const auto init_task_success = try_create_distance_sensor_task(std::format("i2c-bus-0x{:02X}", i), &create_task_result, i, setup);
+            init_task_success)
+        {
+            FLOGI("Successfully created distance sensor task 0x{:08X} for I2C bus {}: 0x{:04X}",
+                reinterpret_cast<uintptr_t>(*setup->sensor_tasks[i]),
+                i,
+                create_task_result);
+        }
+        else
+        {
+            FLOGE("Failed to create distance sensor task for I2C bus {}: 0x{:04X}", i, create_task_result);
         }
     }
 }
@@ -210,27 +207,27 @@ void init_dac_controller(app_state* setup)
     if (!setup_successful)
     {
         //Clear dac/task if unsuccessful
-        if (setup->dac_write_task != nullptr)
-        {
-            if (const auto created_task = *setup->dac_write_task; created_task != nullptr)
-                vTaskDelete(created_task);
-
-            setup->dac_write_task = nullptr;
-        }
+        // if (setup->dac_write_task != nullptr)
+        // {
+        //     if (const auto created_task = *setup->dac_write_task; created_task != nullptr)
+        //         vTaskDelete(created_task);
+        //
+        //     setup->dac_write_task = nullptr;
+        // }
 
         setup->dac_ctrl = nullptr;
     }
 }
 
-bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, const size_t sensor_ndx, app_state* setup)
+bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, const size_t bus_ndx, app_state* setup)
 {
     try
     {
-        if (setup->distance_sensors[sensor_ndx] != nullptr)
+        if (!setup->distance_sensors[bus_ndx].empty())
         {
-            auto task_param = sensor_task_param {
+            auto task_param = bus_sensor_task_param {
                 .state = setup,
-                .index = sensor_ndx
+                .index = bus_ndx
             };
 
             TaskHandle_t task_handle;
@@ -244,28 +241,27 @@ bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* r
                 &task_handle
             );
 
-            setup->sensor_tasks[sensor_ndx] = std::make_unique<TaskHandle_t>(task_handle);
+            setup->sensor_tasks[bus_ndx] = std::make_unique<TaskHandle_t>(task_handle);
 
             if (*result_code != pdPASS)
             {
-                FLOGE("{} Failed to create task. Code: 0x{:04X}.",
-                    setup->distance_sensors[sensor_ndx]->get_log_key(),
+                FLOGE("Failed to create distance sensor task for I2C bus {}. Code: 0x{:04X}.",
+                    bus_ndx,
                     static_cast<int>(*result_code));
             }
 
             return *result_code == pdPASS;
         }
 
-        FLOGE("Cannot configure task for unconfigured distance sensor #{}.", sensor_ndx);
+        FLOGE("Cannot configure task for I2C bus {}, as it has no sensors.", bus_ndx);
         *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument
 
         return false;
     }
     catch (std::exception& e)
     {
-        FLOGE("{} An exception occurred while configuring task for distance sensor #{}: {}",
-            setup->distance_sensors[sensor_ndx] == nullptr? "[unconfigured sensor]" : setup->distance_sensors[sensor_ndx]->get_log_key(),
-            sensor_ndx,
+        FLOGE("An exception occurred while configuring distance sensor task for bus {}: {}",
+            bus_ndx,
             e.what());
 
         *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument

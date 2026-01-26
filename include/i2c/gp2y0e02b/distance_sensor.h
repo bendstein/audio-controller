@@ -50,6 +50,7 @@ namespace gp2y0e02b
         int32_t timeout_ms = -1;
         distance_sensor_state state {};
         uint8_t address;
+        size_t index;
         std::string log_key;
 
         [[nodiscard]] bool try_select_register(register_map_tag tag) const;
@@ -60,30 +61,31 @@ namespace gp2y0e02b
                 address,
                 reinterpret_cast<uintptr_t>(handle));
         }
+    public:
+        distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address, const size_t index)
+            : handle(device_handle), address(address), index(index)
+        {
+            state.reset();
+            log_key = make_log_key();
+        }
+
+        distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address, const size_t index, const int32_t timeout)
+            : distance_sensor(device_handle, address, index)
+        {
+            timeout_ms = timeout;
+        }
 
         distance_sensor() = delete;
         distance_sensor(const distance_sensor& other) = delete;
         distance_sensor(distance_sensor&& other) = delete;
         distance_sensor& operator=(const distance_sensor& other) = delete;
         distance_sensor& operator=(distance_sensor&& other) = delete;
-    public:
-        distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address)
-            : handle(device_handle), address(address)
-        {
-            state.reset();
-            log_key = make_log_key();
-        }
-
-        distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address, const int32_t timeout)
-            : distance_sensor(device_handle, address)
-        {
-            timeout_ms = timeout;
-        }
 
         [[nodiscard]] int32_t get_timeout_ms() const { return timeout_ms; }
         void set_timeout(const int32_t timeout) { timeout_ms = timeout; }
 
         [[nodiscard]] uint8_t get_addr() const { return address; }
+        [[nodiscard]] size_t get_index() const { return index; }
 
         [[nodiscard]] const std::string& get_log_key() const { return log_key; }
 
@@ -179,11 +181,12 @@ namespace gp2y0e02b
          * Initialize distance sensor, creating a device handle and adding it to the bus
          * @param bus Handle for the i2c bus
          * @param addr i2c address for this sensor
+         * @param index incrementing id for sensor
          * @param timeout_ms standard timeout in milliseconds for i2c operations
          * @return The created distance sensor, or none if failed
          * @remark Adds a new device to the master bus
          */
-        [[nodiscard]] static std::unique_ptr<distance_sensor> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
+        [[nodiscard]] static std::unique_ptr<distance_sensor> try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const size_t index, const int32_t timeout_ms)
         {
             FLOGI("[distance sensor 0x{:02X}] Creating device on bus 0x{:08X}.", addr, reinterpret_cast<uintptr_t>(bus));
 
@@ -207,7 +210,7 @@ namespace gp2y0e02b
                 return nullptr;
             }
 
-            return std::make_unique<distance_sensor>(handle, addr, timeout_ms);
+            return std::make_unique<distance_sensor>(handle, addr, index, timeout_ms);
         }
 
         ~distance_sensor()
@@ -254,7 +257,7 @@ namespace gp2y0e02b
             assert((addr_new & 0x0F) == 0);
             assert(bus != nullptr);
 
-            const auto maybe_sensor = try_create_on_bus(bus, I2C_ADDR_DFT, -1);
+            const auto maybe_sensor = try_create_on_bus(bus, I2C_ADDR_DFT, 0, -1);
 
             if (maybe_sensor == nullptr)
                 throw std::runtime_error("Failed to create sensor");

@@ -33,9 +33,9 @@ public:
 private:
     static constexpr auto TASK_NAME = "[DAC Ctrl]";
     static constexpr auto WB_TASK_NAME = "[DAC Ctrl WB]";
-    static constexpr auto TASK_PRIORITY = 1;
+    static constexpr auto TASK_PRIORITY = 2;
     static constexpr auto TASK_STACK_SIZE = 0x1000;
-    static constexpr auto WB_TASK_PRIORITY = 4;
+    static constexpr auto WB_TASK_PRIORITY = 1;
     static constexpr auto WB_TASK_STACK_SIZE = 0x1000;
 
     static constexpr auto TASK_MESSAGE_INDEX_WB_READY = 1;
@@ -48,10 +48,7 @@ private:
 
     static constexpr size_t DAC_DOUBLE_BUFFER_SIZE = 1 << 14;
     static constexpr float DAC_DOUBLE_BUFFER_TIME_SECONDS = static_cast<float>(DAC_DOUBLE_BUFFER_SIZE) / DAC_CFG_SAMPLE_RATE;
-    static constexpr size_t MOVING_AVERAGE_LEN = 3;
-
-    static constexpr size_t DAC_DOUBLE_BUFFER_SIZE_ADJUSTMENT = 1 << 8;
-    static constexpr size_t DAC_DOUBLE_BUFFER_SIZE_TRUNCATED = DAC_DOUBLE_BUFFER_SIZE - DAC_DOUBLE_BUFFER_SIZE_ADJUSTMENT;
+    static constexpr size_t MOVING_AVERAGE_LEN = 4;
 
     static constexpr size_t FREQ_BUFFER_CAPACITY = 32;
     static constexpr size_t DAC_WRITE_QUEUE_CAPACITY = 8;
@@ -73,16 +70,24 @@ private:
     SemaphoreHandle_t task_started_sem;
     QueueHandle_t dac_write_queue_handle;
 
-    size_t swap_buffers(const size_t working_buffer_len)
+    void swap_buffers(size_t& working_buffer_len)
     {
         FVERBOSE("{} Swap buffers.", LOG_KEY);
 
         rtos_semaphore_handle lock { swap_buffers_mux };
 
+        //In case that working buffer is empty, fill it with 0
+        //and set length to max
+        if (working_buffer_len == 0)
+        {
+            FVERBOSE("{} No data in working buffer. Zeroing buffer and setting length to max.", LOG_KEY);
+            memset(working_buffer, 0, DAC_DOUBLE_BUFFER_SIZE);
+            working_buffer_len = DAC_DOUBLE_BUFFER_SIZE;
+        }
+
+        //Otherwise, swap active and working buffers
         std::swap(active_buffer, working_buffer);
-        const auto current = active_buffer_len;
         active_buffer_len = working_buffer_len;
-        return current;
     }
 
     static bool IRAM_ATTR dac_isr(dac_continuous_handle_t, const dac_event_data_t* ev, void* isr_param)
@@ -184,19 +189,10 @@ private:
 
                     //Wait for message to recalculate working buffer
                     FVERBOSE("{} Task {} waiting for message to recalculate (ndx {}).", LOG_KEY, WB_TASK_NAME, WB_TASK_MESSAGE_INDEX_READY);
-                    do
-                    {
-                        if (const auto wait_result = xTaskNotifyWaitIndexed(WB_TASK_MESSAGE_INDEX_READY, 0xFFFFFFFF, 0xFFFFFFFF, nullptr, portMAX_DELAY);
-                            wait_result != pdPASS)
-                        {
-                            FLOGE("{} Didn't successfully receive continue message in task {}.", LOG_KEY, WB_TASK_NAME);
-                            vTaskDelay(10 / portTICK_PERIOD_MS);
-                            continue;
-                        }
 
-                        break;
-                    }
-                    while (true);
+                    //Only wait for a set amount of time before recalculating anyways
+                    xTaskNotifyWaitIndexed(WB_TASK_MESSAGE_INDEX_READY, 0xFFFFFFFF, 0xFFFFFFFF,
+                            nullptr, 100 / portTICK_PERIOD_MS);
                 }
                 while (true);
             }
@@ -224,15 +220,17 @@ private:
                 //Flag that task has started
                 xSemaphoreGive(self->task_started_sem);
 
-                uint32_t working_buffer_len;
+                size_t working_buffer_len;
 
                 FLOGI("{} Task {} waiting for initial buffer calculation.", LOG_KEY, TASK_NAME);
 
-                //Wait for initial buffer calculation
+                //Wait for initial buffer calculation, updating working buffer length
                 do
                 {
+                    uint32_t working_buffer_len_temp;
+
                     if (const auto wait_result = xTaskNotifyWaitIndexed(TASK_MESSAGE_INDEX_WB_READY, 0xFFFFFFFF, 0xFFFFFFFF,
-                        &working_buffer_len, portMAX_DELAY);
+                        &working_buffer_len_temp, portMAX_DELAY);
                         wait_result != pdPASS)
                     {
                         FLOGE("{} Didn't successfully receive initial buffer calculation message in task {}.", LOG_KEY, WB_TASK_NAME);
@@ -240,22 +238,35 @@ private:
                         continue;
                     }
 
+                    working_buffer_len = static_cast<size_t>(working_buffer_len_temp);
+
                     break;
                 }
                 while (true);
 
-                FLOGI("{} Task {} starting DAC continuous write.", LOG_KEY, TASK_NAME);
-
-                if (const auto start_write_result = dac_continuous_start_async_writing(self->handle);
-                    start_write_result != ESP_OK)
+                //Start write
+                do
                 {
-                    FLOGE("{} Task {} failed to start DAC async write. [0x{:04X}] {}", LOG_KEY, TASK_NAME, start_write_result, esp_err_to_name(start_write_result));
+                    FLOGI("{} Task {} starting DAC continuous write.", LOG_KEY, TASK_NAME);
+
+                    if (const auto start_write_result = dac_continuous_start_async_writing(self->handle);
+                        start_write_result != ESP_OK)
+                    {
+                        FLOGE("{} Task {} failed to start DAC async write. [0x{:04X}] {}", LOG_KEY, TASK_NAME, start_write_result, esp_err_to_name(start_write_result));
+                        vTaskDelay(50 / portTICK_PERIOD_MS);
+                        continue;
+                    }
+
+                    break;
                 }
+                while (true);
 
                 FLOGI("{} Task {} starting main loop.", LOG_KEY, TASK_NAME);
 
                 do
                 {
+                    //Swap buffers. In specific case where working buffer len is 0, will be updated to max length
+                    //and buffer will be zeroed
                     self->swap_buffers(working_buffer_len);
 
                     //Notify working buffer task that it can start recalculating
@@ -269,6 +280,9 @@ private:
 
                     dac_event_data_t ev;
                     size_t cursor = 0;
+
+                    if (self->active_buffer_len > 0)
+                        FVERBOSE("{} Task {} writing {} bytes to DAC.", LOG_KEY, TASK_NAME, self->active_buffer_len);
 
                     //Write active buffer to DAC DMA buffer
                     while (cursor < self->active_buffer_len)
@@ -308,14 +322,18 @@ private:
                     {
                         FVERBOSE("{} Task {} waiting for working buffer to be ready (ndx: {})", LOG_KEY, TASK_NAME, TASK_MESSAGE_INDEX_WB_READY);
 
+                        uint32_t working_buffer_len_temp;
+
                         if (const auto wait_result = xTaskNotifyWaitIndexed(TASK_MESSAGE_INDEX_WB_READY, 0xFFFFFFFF, 0xFFFFFFFF,
-                            &working_buffer_len, portMAX_DELAY);
+                            &working_buffer_len_temp, portMAX_DELAY);
                             wait_result != pdPASS)
                         {
                             FLOGE("{} Didn't successfully receive buffer calculation message in task {}.", LOG_KEY, WB_TASK_NAME);
                             vTaskDelay(10 / portTICK_PERIOD_MS);
                             continue;
                         }
+
+                        working_buffer_len = static_cast<size_t>(working_buffer_len_temp);
 
                         break;
                     }
@@ -350,28 +368,6 @@ private:
 
         for (size_t i = 0; i < DAC_DOUBLE_BUFFER_SIZE; i++)
         {
-            // //Current time is the ratio through the buffer, scaled to the amount of time that the buffer corresponds to
-            // //Add n as initial offset, to reflect whether this is a continuation of the same set of frequencies
-            // const auto t = (static_cast<float>(i + offset) / DAC_DOUBLE_BUFFER_SIZE) * DAC_DOUBLE_BUFFER_TIME_SECONDS;
-
-            // //Sum up sine waves, skipping 0s
-            // float sum = 0.f;
-            // size_t freq_used = 0;
-            //
-            // for (size_t f = 0; f < tone_data_len; f++)
-            // {
-            //     if (const auto freq = tone_data[f]; freq > 0)
-            //     {
-            //         sum += (1.f + sinf(2.f * static_cast<float>(M_PI) * static_cast<float>(t) * freq)) / 2.f;
-            //         freq_used++;
-            //     }
-            // }
-            //
-            // //If no frequency data, use 0, otherwise, average sine waves and scale to byte
-            // const auto next_value = freq_used == 0
-            //     ? 0
-            //     : static_cast<uint8_t>(std::clamp(static_cast<int>(std::round(0xFF * sum / static_cast<float>(freq_used))), 0, 0xFF));
-
             //Use data from pre-calculated sine wave tables, average together
             uint32_t sum = 0;
             size_t tones_used = 0;
@@ -390,7 +386,7 @@ private:
                 : sum / tones_used;
 
             //Apply moving average filter to smooth data
-            int moving_average_sum = next_value;
+            int moving_average_sum = static_cast<int>(next_value);
             int moving_average_count = 1;
 
             for (size_t j = MOVING_AVERAGE_LEN; j > 0; j--)
@@ -413,38 +409,6 @@ private:
 
             working_buffer[i] = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round((1. * moving_average_sum) / moving_average_count)), 0, 0xFF));
         }
-
-        // //Truncate the end of the buffer for continuity when wrapping from end to start.
-        // //Subtracting DAC_LENGTH_ADJUSTMENT because for some reason the last 256 bits are
-        // //ignored.
-        // //Try to find the point closest to the end of the buffer which passes through 0xFF/2
-        // //with a positive slope
-        // //Sample interval is chosen arbitrarily. It's only purpose is to prevent potential
-        // //rounding issues from choosing points too close to each other
-        // constexpr size_t sample_interval = 4;
-        // constexpr uint8_t midpoint = 0xFF / 2;
-        //
-        // size_t working_buffer_len = DAC_DOUBLE_BUFFER_SIZE_TRUNCATED;
-        //
-        // uint8_t previous_value = 0;
-        // for (size_t i = DAC_DOUBLE_BUFFER_SIZE_TRUNCATED - 1; i >= sample_interval; i -= sample_interval)
-        // {
-        //     const auto current_value = working_buffer[i];
-        //
-        //     //Check that points are on opposite side of the midpoint,
-        //     //and that this point is less than previous (moving backwards,
-        //     //so this indicates ascending)
-        //     if (current_value <= midpoint
-        //         && previous_value >= midpoint
-        //         && current_value < previous_value
-        //     )
-        //     {
-        //         working_buffer_len = i;
-        //         break;
-        //     }
-        //
-        //     previous_value = current_value;
-        // }
 
         // //Find the value closest to the end that is within epsilon of the
         // //first value, and use that as the end of the buffer, to help
@@ -551,7 +515,7 @@ public:
 
     void write(const musical_note_tone data[], const size_t data_len)
     {
-        assert(data_len > 0 && data_len <= FREQ_BUFFER_CAPACITY);
+        assert(data_len <= FREQ_BUFFER_CAPACITY);
 
         FVERBOSE("{} Waiting to write {} frequencies to DAC controller.", LOG_KEY, data_len);
 
