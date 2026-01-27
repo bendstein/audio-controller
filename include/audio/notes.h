@@ -41,15 +41,6 @@ constexpr float musical_note_freq_hz(const musical_note note, const uint8_t octa
 }
 
 [[nodiscard]]
-consteval const SineTable* get_sine_table_from_note_consteval(const musical_note note, const uint8_t octave)
-{
-    assert(static_cast<size_t>(note) < sine_tables::ALL_SINE_TABLES_LENGTH_0
-        && octave >= sine_tables::MIN_OCTAVE
-        && octave <= sine_tables::MAX_OCTAVE);
-    return &sine_tables::ALL_SINE_TABLES[static_cast<size_t>(note)][octave - sine_tables::MIN_OCTAVE];
-}
-
-[[nodiscard]]
 inline const SineTable* get_sine_table_from_note(const musical_note note, const uint8_t octave)
 {
     assert(static_cast<size_t>(note) < sine_tables::ALL_SINE_TABLES_LENGTH_0
@@ -72,12 +63,11 @@ struct musical_note_tone
     [[nodiscard]] bool is_invalid() const { return octave == 0xFF; }
     [[nodiscard]] const SineTable* sine_table() const { return get_sine_table(*this); }
     [[nodiscard]] float frequency_hz() const { return is_invalid()? 0 : musical_note_freq_hz(note, octave); }
-    [[nodiscard]] bool is_equivalent(const musical_note_tone& other) const { return check_frequency_equivalency(frequency_hz(), other.frequency_hz()); }
-    [[nodiscard]] bool is_equivalent(const float other_hz) const { return check_frequency_equivalency(frequency_hz(), other_hz); }
+
+    bool operator==(const musical_note_tone& other) const { return check_frequency_equivalency(frequency_hz(), other.frequency_hz()); }
+    bool operator==(const float other_hz) const { return check_frequency_equivalency(frequency_hz(), other_hz); }
 
     [[nodiscard]] static consteval musical_note_tone create_invalid() { return musical_note_tone(musical_note::C, 0xFF); }
-
-    [[nodiscard]] static consteval const SineTable* get_sine_table_consteval(const musical_note_tone& tone) { return get_sine_table_from_note_consteval(tone.note, tone.octave); }
     [[nodiscard]] static const SineTable* get_sine_table(const musical_note_tone& tone) { return get_sine_table_from_note(tone.note, tone.octave); }
 };
 

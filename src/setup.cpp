@@ -144,7 +144,7 @@ void init_distance_sensors(app_state* setup)
         }
 
         BaseType_t create_task_result;
-        if (const auto init_task_success = try_create_distance_sensor_task(std::format("i2c-bus-0x{:02X}", i), &create_task_result, i, setup);
+        if (const auto init_task_success = try_create_distance_sensor_task(std::format("<i2c-bus-0x{:02X}>", i), &create_task_result, i, setup);
             init_task_success)
         {
             FLOGI("Successfully created distance sensor task 0x{:08X} for I2C bus {}: 0x{:04X}",
@@ -175,7 +175,7 @@ void init_dac_controller(app_state* setup)
             BaseType_t create_task_result;
 
             if (try_create_dac_write_task(
-                "DAC-WRITE",
+                "<DAC-WRITE>",
                 &create_task_result,
                 setup
             ))

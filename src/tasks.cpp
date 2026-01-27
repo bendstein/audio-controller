@@ -125,39 +125,22 @@ void dac_write_task(void* task_param_pointer)
 
         //Collect the current tones corresponding to each sensor,
         //and send them to the DAC controller
-        musical_note_tone tones[SENSORS_COUNT + 1] {};
-        uint8_t tone_count = 0;
+        fixed_vec<musical_note_tone, dac_controller::TONE_DATA_CAPACITY> tone_data {};
 
         do
         {
             try
             {
                 //Get frequency in Hz for each sensor, then give to DAC controller
-                const uint8_t tone_count_prev = tone_count;
-                tone_count = 0;
-
-                bool has_change = false;
-
                 for (const auto t : app_state->current_tones)
                 {
-                    if (!t.is_invalid() && !t.is_equivalent(0)) //Frequency = 0 -> Invalid
+                    if (!t.is_invalid() && t != 0) //Frequency = 0 -> Invalid
                     {
-                        if (!t.is_equivalent(tones[tone_count])) //Frequency has changed since last iteration
-                        {
-                            has_change = true;
-                            tones[tone_count] = t;
-                        }
-
-                        tone_count++;
+                        tone_data.add_to_end(t);
                     }
                 }
 
-                has_change |= tone_count != tone_count_prev;
-
-                if (has_change) //DAC only requires update on change
-                {
-                    dac_controller.write(tones, tone_count);
-                }
+                dac_controller.write(tone_data);
             }
             catch (std::exception& e)
             {
@@ -168,6 +151,8 @@ void dac_write_task(void* task_param_pointer)
 
             vTaskDelay(100 / portTICK_PERIOD_US);
         } while (true);
+
+        tone_data.clear();
     }
     catch (std::exception& e)
     {

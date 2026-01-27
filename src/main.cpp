@@ -27,7 +27,7 @@ void app_main()
         {
             VERBOSE("Creating log_tasks_task.");
 
-            if (const auto create_log_tasks_task_result = xTaskCreate(log_system_state_task, "log_sys_state",
+            if (const auto create_log_tasks_task_result = xTaskCreate(log_system_state_task, "<LOG_SYS_STATE>",
                 4096,  nullptr, 1, &log_tasks_task); create_log_tasks_task_result != pdPASS)
             {
                 FLOGE("Failed to create log_tasks_task. (0x{:04X})", create_log_tasks_task_result);

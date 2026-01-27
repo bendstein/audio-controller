@@ -5,6 +5,7 @@
 #ifndef AUDIO_CONTROLLER_FIXED_VEC_H
 #define AUDIO_CONTROLLER_FIXED_VEC_H
 
+#include <cstring>
 #include <format>
 #include <stdexcept>
 
@@ -14,29 +15,67 @@ class fixed_vec
 public:
     static constexpr size_t capacity = CAPACITY;
 private:
-    size_t length = 0;
-    T storage[CAPACITY] {};
+    size_t length;
+    T storage[CAPACITY];
 public:
-    fixed_vec()
+    fixed_vec() : length(0), storage()
     {
-        for (auto i = 0; i < CAPACITY; i++)
-            storage[i] = nullptr;
+        memset(storage, 0, CAPACITY * sizeof(T));
     }
 
-    explicit fixed_vec(T pre_allocated[CAPACITY]) : storage(pre_allocated)
+    fixed_vec(const fixed_vec& other) = delete;
+    fixed_vec(fixed_vec&& other) noexcept : length(other.length), storage()
     {
-        for (auto i = 0; i < CAPACITY; i++)
-            storage[i] = nullptr;
+        memcpy(storage, other.storage, sizeof(T) * CAPACITY);
+    }
+
+    ~fixed_vec() = default;
+
+    fixed_vec& operator=(const fixed_vec& other)
+    {
+        if (this == &other)
+            return *this;
+
+        *this = other;
+        return *this;
+    }
+
+    fixed_vec& operator=(fixed_vec&& other) noexcept
+    {
+        if (this == &other)
+            return *this;
+
+        length = other.length;
+        memcpy(storage, other.storage, sizeof(T) * CAPACITY);
+        return *this;
     }
 
     T& operator[](const size_t index) { return at(index); }
     const T& operator[](const size_t index) const { return at(index); }
+    T* operator*() { return storage; }
 
     [[nodiscard]] T* data() noexcept { return storage; }
     [[nodiscard]] const T* data() const noexcept { return storage; }
     [[nodiscard]] size_t size() const noexcept { return length; }
     [[nodiscard]] bool empty() const noexcept { return length == 0; }
     [[nodiscard]] bool full() const noexcept { return length == CAPACITY; }
+
+    [[nodiscard]] bool sequence_equals(const fixed_vec& other) const
+    {
+        if (this == &other)
+            return true;
+
+        if (length != other.length)
+            return false;
+
+        for (size_t i = 0; i < length; i++)
+        {
+            if (storage[i] != other.storage[i])
+                return false;
+        }
+
+        return true;
+    }
 
     [[nodiscard]] const T& at(size_t i) const
     {
@@ -56,27 +95,20 @@ public:
     [[nodiscard]] T& front() { return at(0); }
     [[nodiscard]] T& back() { return at(length - 1); }
 
+    void clear()
+    {
+        length = 0;
+        memset(storage, 0, CAPACITY * sizeof(T));
+    }
+
     bool remove_last()
     {
         if (length == 0)
             return false;
 
-        storage[length - 1] = nullptr;
         length--;
 
         return true;
-    }
-
-    void remove_at(size_t i)
-    {
-        if (i >= length)
-            throw std::runtime_error(std::format("Index {} out of range (length = {})", i, length));
-
-        auto current = at(i);
-        storage[i] = nullptr;
-
-        if (i == length - 1) //Reduce length if removing from end
-            length--;
     }
 
     size_t add_to_end(T value)
