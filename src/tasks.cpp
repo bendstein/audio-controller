@@ -1,19 +1,19 @@
 //
 // Created by bendstein on 12/27/2025.
 //
-#include "tasks.h"
 
 #include <algorithm>
-
-#include "audio/dac_controller.h"
-
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
 
 #include <cmath>
 #include <memory>
 
-#include "../include/audio/notes.h"
+#include <freertos/FreeRTOS.h>
+#include <freertos/FreeRTOSConfig.h>
+#include <freertos/task.h>
+
+#include "audio/dac_controller.h"
+#include "tasks.h"
+#include "app_common.h"
 
 [[noreturn]]
 void distance_sensor_task(void* task_param_pointer)
@@ -126,11 +126,14 @@ void dac_write_task(void* task_param_pointer)
         //Collect the current tones corresponding to each sensor,
         //and send them to the DAC controller
         fixed_vec<musical_note_tone, dac_controller::TONE_DATA_CAPACITY> tone_data {};
+        fixed_vec<musical_note_tone, dac_controller::TONE_DATA_CAPACITY> tone_data_prev {};
 
         do
         {
             try
             {
+                tone_data.clear();
+
                 //Get frequency in Hz for each sensor, then give to DAC controller
                 for (const auto t : app_state->current_tones)
                 {
@@ -140,7 +143,23 @@ void dac_write_task(void* task_param_pointer)
                     }
                 }
 
-                dac_controller.write(tone_data);
+                //Only write to DAC ctrl if data changed
+                if (!tone_data.sequence_equals(tone_data_prev))
+                {
+                    if constexpr (FLAG_VERBOSE)
+                    {
+                        for (auto t = 0; t < tone_data.size(); t++)
+                            FVERBOSE("{} Tone: {}", dac_controller::LOG_KEY, tone_data[t].name());
+
+                    }
+
+                    tone_data_prev = std::move(tone_data); //Overwrite previous with current data for comparison next iteration
+                    dac_controller.write(tone_data);
+                }
+                else
+                {
+                    FVERBOSE("{} Tone data is unchanged during DAC write task.", dac_controller::LOG_KEY);
+                }
             }
             catch (std::exception& e)
             {

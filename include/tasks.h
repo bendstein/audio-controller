@@ -6,9 +6,9 @@
 #define AUDIO_CONTROLLER_TASKS_H
 #include "setup.h"
 
-static constexpr auto DISTANCE_SENSOR_TASK_PRIORITY = 1;
+static constexpr auto DISTANCE_SENSOR_TASK_PRIORITY = 2;
 static constexpr auto DISTANCE_SENSOR_TASK_STACK_SIZE = 0x1000;
-static constexpr auto DAC_WRITE_TASK_PRIORITY = 1;
+static constexpr auto DAC_WRITE_TASK_PRIORITY = 2;
 static constexpr auto DAC_WRITE_TASK_STACK_SIZE = 0x1000;
 
 struct bus_sensor_task_param

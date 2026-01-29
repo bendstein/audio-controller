@@ -12,7 +12,6 @@
 #include <driver/i2c_types.h>
 
 #include "i2c/i2c.h"
-#include "../audio/notes.h"
 
 namespace mcp4725
 {

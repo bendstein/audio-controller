@@ -12,18 +12,11 @@
 #include <ctime>
 #include "driver/gpio.h"
 #include <freertos/FreeRTOS.h>
+#include <freertos/FreeRTOSConfig.h>
 #include <freertos/task.h>
 #include <sys/_timeval.h>
 
-// #define LOG_VERBOSE //If present, enable VERBOSE log macros, as well as additional debug info
-
-#ifdef LOG_VERBOSE
-//Whether the application should perform additional debugging/logging logic
-constexpr auto FLAG_VERBOSE = true;
-#else
-//Whether the application should perform additional debugging/logging logic
-constexpr auto FLAG_VERBOSE = false;
-#endif
+constexpr auto FLAG_VERBOSE = false; //Whether the application should perform additional debugging/logging logic
 
 constexpr auto US_PER_MS = 1000;
 constexpr auto MS_PER_SECOND = 1000;
@@ -164,17 +157,9 @@ inline void loge(const std::string& tag, const std::string& message)
 #define FLOGE(message, ...) LOGE(std::format(message __VA_OPT__(,) __VA_ARGS__))
 
 //Only verbose log if enabled
-#ifdef LOG_VERBOSE
-#define VERBOSE(message) logv(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, message))
-#define VERBOSE_LB(message) logv(__FILE_NAME__, std::format("({}:{})\r\n{}", __func__, __LINE__, message))
-#define FVERBOSE(message, ...) logv(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
-#define FVERBOSE_LB(message, ...) logv(__FILE_NAME__, std::format("({}:{})\r\n{}", __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__)))
-#else
-#define ALLOW_VERBOSE() {}
-#define VERBOSE(message) {}
-#define VERBOSE_LB(message) {}
-#define FVERBOSE(message, ...) {}
-#define FVERBOSE_LB(message, ...) {}
-#endif
+#define VERBOSE(message) do { if constexpr(FLAG_VERBOSE) { logv(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, message)); } } while(false)
+#define VERBOSE_LB(message) do { if constexpr(FLAG_VERBOSE) { logv(__FILE_NAME__, std::format("({}:{})\r\n{}", __func__, __LINE__, message)); } } while(false)
+#define FVERBOSE(message, ...) do { if constexpr(FLAG_VERBOSE) { logv(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__))); } } while(false)
+#define FVERBOSE_LB(message, ...) do { if constexpr(FLAG_VERBOSE) { logv(__FILE_NAME__, std::format("({}:{})\r\n{}", __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__))); } } while(false)
 
 #endif //AUDIO_CONTROLLER_COMMON_H

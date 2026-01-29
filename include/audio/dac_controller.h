@@ -18,6 +18,7 @@
 #include "rtos_utils.h"
 #include "i2c/mcp4725.h"
 #include "fixed_vec.h"
+#include "tones.h"
 
 enum struct dac_controller_start_result
 {
@@ -39,7 +40,7 @@ private:
 
     static constexpr int DAC_CFG_DESC_NUM = 10;
     static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 11;
-    static constexpr int DAC_CFG_SAMPLE_RATE = sine_tables::SAMPLE_RATE;
+    static constexpr int DAC_CFG_SAMPLE_RATE = musical_note_data::SAMPLE_RATE;
     static constexpr int DAC_CFG_OFFSET = 0;
 
     static constexpr size_t MOVING_AVERAGE_LEN = 4;
@@ -119,7 +120,7 @@ private:
                     //Try read in current tone data, but give up and keep going after a short timeout
                     FVERBOSE("{} Task {} waiting to read tone data to DAC controller.", LOG_KEY, TASK_NAME);
 
-                    if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 50);
+                    if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 50 / portTICK_PERIOD_MS);
                         maybe_tones_handle != nullptr)
                     {
                         local_tone_data = std::move(self->tone_data);
@@ -132,7 +133,7 @@ private:
                         FLOGE("{} Didn't successfully acquire mutex to read new tone data.", LOG_KEY);
                     }
 
-                    FVERBOSE("{} Task {} loading buffer.", LOG_KEY, TASK_NAME)
+                    FVERBOSE("{} Task {} loading buffer.", LOG_KEY, TASK_NAME);
                     self->populate_buffer(self->buffer, BUFFER_LEN, offset, local_tone_data);
 
                     size_t cursor = 0;
@@ -140,32 +141,38 @@ private:
                     {
                         FVERBOSE("{} Task {} waiting for next DAC event.", LOG_KEY, TASK_NAME);
 
-                        //Check if there is a change notification (without waiting). If so, recalculate.
-                        if (xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0) == pdTRUE)
+                        //Check if there is a change notification. If so, recalculate. Continue doing this until a DAC event is received.
+                        size_t next_buffer_offset;
+                        do
                         {
-                            //Try read in current tone data, but give up and keep going after a short timeout
-                            FVERBOSE("{} Task {} waiting to read tone data to DAC controller.", LOG_KEY, TASK_NAME);
+                            next_buffer_offset = offset; //Don't want to actually increase offset until a dac event is received
 
-                            if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 50);
-                                maybe_tones_handle != nullptr)
+                            if (xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0) == pdTRUE)
                             {
-                                local_tone_data = std::move(self->tone_data);
+                                //Try read in current tone data, but give up and keep going after a short timeout
+                                FVERBOSE("{} Task {} waiting to read tone data to DAC controller.", LOG_KEY, TASK_NAME);
 
-                                //Clear change notification if present (do not wait)
-                                xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0);
+                                if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 50 / portTICK_PERIOD_MS);
+                                    maybe_tones_handle != nullptr)
+                                {
+                                    local_tone_data = std::move(self->tone_data);
+
+                                    //Clear change notification if present (do not wait)
+                                    xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0);
+                                }
+                                else
+                                {
+                                    FLOGE("{} Task {} didn't successfully acquire mutex to read new tone data.", LOG_KEY, TASK_NAME);
+                                }
+
+                                FVERBOSE("{} Task {} loading buffer.", LOG_KEY, TASK_NAME);
+                                self->populate_buffer(self->buffer, BUFFER_LEN, next_buffer_offset, local_tone_data);
                             }
-                            else
-                            {
-                                FLOGE("{} Didn't successfully acquire mutex to read new tone data.", LOG_KEY);
-                            }
+                        } while (!xQueueReceive(self->dac_write_queue_handle, &ev, 100 / portTICK_PERIOD_MS));
 
-                            FVERBOSE("{} Task {} loading buffer.", LOG_KEY, TASK_NAME)
-                            self->populate_buffer(self->buffer, BUFFER_LEN, offset, local_tone_data);
-                        }
+                        FVERBOSE("{} Task {} received DAC event.", LOG_KEY, TASK_NAME);
 
-                        //Wait for next DAC event, restarting loop after timeout
-                        if (!xQueueReceive(self->dac_write_queue_handle, &ev, 250))
-                            continue;
+                        offset = next_buffer_offset;
 
                         size_t loaded = 0;
                         if (const auto write_result = dac_continuous_write_asynchronously(self->handle,
@@ -180,7 +187,7 @@ private:
                             cursor += loaded;
                         }
 
-                        // FVERBOSE("{} Task {} wrote {} bytes to DAC.", LOG_KEY, TASK_NAME, loaded);
+                        FVERBOSE("{} Task {} wrote {} bytes to DAC.", LOG_KEY, TASK_NAME, loaded);
                     }
 
                 }
@@ -203,10 +210,10 @@ private:
 
         assert(handle != nullptr);
 
-        if (tones.empty()) //No data given. Clear buffer.
+        if (tones.empty()) //No data given. Clear buffer and reset offset.
         {
             memset(buf, 0, buf_len);
-            offset += buf_len;
+            offset = 0;
             return;
         }
 
@@ -340,8 +347,13 @@ public:
         {
             if (const auto has_change = !data.sequence_equals(tone_data); has_change)
             {
+                FVERBOSE("{} Writing updated tone data.", LOG_KEY);
                 data = std::move(tone_data);
                 xTaskNotifyIndexed(task, TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, true, eNoAction);
+            }
+            else
+            {
+                FVERBOSE("{} Tone data is unchanged.", LOG_KEY);
             }
         }
         else

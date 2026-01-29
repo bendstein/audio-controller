@@ -32,6 +32,21 @@ const NOTE_SYMBOLS = [
     Object.keys({B}),
 ];
 
+const NOTE_NAMES = [
+    ["C"],
+    ["C#", "Db"],
+    ["D"],
+    ["D#", "Eb"],
+    ["E"],
+    ["F"],
+    ["F#", "Gb"],
+    ["G"],
+    ["G#", "Ab"],
+    ["A"],
+    ["A#", "Bb"],
+    ["B"]
+];
+
 function ParseArgs(argv) {
     let dictionary = {};
 
@@ -158,10 +173,41 @@ const file_content = `
 
 #ifndef AUDIO_CONTROLLER_MUSICAL_NOTE_DATA_H
 #define AUDIO_CONTROLLER_MUSICAL_NOTE_DATA_H
-#include "sine_table.h"
+#include <cmath>
 
-namespace sine_tables {
+#include "sine_table.h"
+#include "musical_note.h"
+
+namespace musical_note_data {
     namespace data {   
+        //Note names
+        constexpr auto MUSICAL_NOTE_NAME_NONE = "";
+        
+        ${NOTE_SYMBOLS.flatMap((symbols, symbols_ndx) => {
+            const note_names = NOTE_NAMES[symbols_ndx];
+            
+            return symbols.map((symbol, ndx) => `constexpr auto MUSICAL_NOTE_NAME_${symbol} = "${note_names[ndx]}";`);
+        }).reduce((a, b) => `${a}\r\n\t\t${b}`)}
+        
+        ${(() => {
+            let lines = [];
+            
+            for(let octave = OCTAVES[0]; octave <= OCTAVES[1]; octave++) {
+                if(octave !== OCTAVES[0])
+                    lines.push('');
+                
+                lines.push(`//Note names, octave ${octave}`);
+                
+                lines.push(...NOTE_SYMBOLS.flatMap((symbols, symbols_ndx) => {
+                    const note_names = NOTE_NAMES[symbols_ndx];
+
+                    return symbols.map((symbol, ndx) => `constexpr auto MUSICAL_NOTE_NAME_${symbol}_OCTAVE_${octave} = "${note_names[ndx]}${octave}";`);
+                }));
+            }
+            
+            return lines;
+        })().reduce((a, b) => `${a}\r\n\t\t${b}`)}
+    
         ${note_tables.map((note_table, note_ndx) => {
             const names = NOTE_SYMBOLS[note_ndx];
             const primary_name = names[0];
@@ -194,7 +240,7 @@ namespace sine_tables {
     constexpr size_t MAX_OCTAVE = ${OCTAVES[1]};
     
     /**
-     * The maximum length of any of the tables
+     * The maximum length of the tables
      */
      constexpr size_t MAX_LENGTH = ${Math.max(...note_tables.flatMap(n => n.map(n => n.length)))};
     
@@ -220,12 +266,66 @@ namespace sine_tables {
 	};
 }
 
+inline const char* get_note_name(const musical_note note, const bool prefer_flat = false)
+{
+    switch (note)
+    {
+        ${NOTE_SYMBOLS.map(symbols => {
+            if(symbols.length > 0) {
+                if(symbols.length > 1) {
+                    return `case musical_note::${symbols[0]}: return prefer_flat? musical_note_data::data::MUSICAL_NOTE_NAME_${symbols[1]} : musical_note_data::data::MUSICAL_NOTE_NAME_${symbols[0]};`;
+                }
+                else {
+                    return `case musical_note::${symbols[0]}: return musical_note_data::data::MUSICAL_NOTE_NAME_${symbols[0]};`;
+                }
+            }
+        }).reduce((a, b) => `${a}\r\n\t\t${b}`)}
+        default: return musical_note_data::data::MUSICAL_NOTE_NAME_NONE;
+    }
+}
+
+inline const char* get_note_name(const musical_note note, const uint8_t octave, const bool prefer_flat = false)
+{
+    switch (octave)
+    {
+        ${(() => {
+            let lines = [];
+        
+            for(let octave = OCTAVES[0]; octave <= OCTAVES[1]; octave++) {
+                if(octave !== OCTAVES[0])
+                    lines.push('');
+        
+                lines.push(`//Octave ${octave}`);
+        
+                lines.push(...`case ${octave}:
+            switch (note)
+            {
+                ${NOTE_SYMBOLS.map(symbols => {
+                    if(symbols.length > 0) {
+                        if(symbols.length > 1) {
+                            return `case musical_note::${symbols[0]}: return prefer_flat? musical_note_data::data::MUSICAL_NOTE_NAME_${symbols[1]}_OCTAVE_${octave} : musical_note_data::data::MUSICAL_NOTE_NAME_${symbols[0]}_OCTAVE_${octave};`;
+                        }
+                        else {
+                            return `case musical_note::${symbols[0]}: return musical_note_data::data::MUSICAL_NOTE_NAME_${symbols[0]}_OCTAVE_${octave};`;
+                        }
+                    }
+                }).reduce((a, b) => `${a}\r\n\t\t${b}`)}
+                default: return musical_note_data::data::MUSICAL_NOTE_NAME_NONE;
+            }`.split('\r\n'));
+            }
+        
+            return lines;
+        })().reduce((a, b) => `${a}\r\n\t\t${b}`)}
+        default: return musical_note_data::data::MUSICAL_NOTE_NAME_NONE;
+    }
+}
+
 #endif //AUDIO_CONTROLLER_MUSICAL_NOTE_DATA_H
 `.trim();
 
-// console.log(file_content);
+console.log(file_content);
 
-print_table(A, 4);
+// print_table(A, 4);
 
 console.log(`Total bytes: ${note_tables.flatMap(n => n.map(n => n.length)).reduce((a, b) => a + b)}`)
 
