@@ -12,7 +12,7 @@ void app_main()
     if constexpr (FLAG_VERBOSE) //Enable verbose logging for specific tags
     {
         esp_log_level_set("dac_controller.h", ESP_LOG_VERBOSE);
-        esp_log_level_set("tasks.cpp", ESP_LOG_VERBOSE);
+        // esp_log_level_set("tasks.cpp", ESP_LOG_VERBOSE);
     }
 
 #ifdef CFG_GP2Y0E02B_I2C_ADDR

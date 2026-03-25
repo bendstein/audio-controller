@@ -39,18 +39,18 @@ private:
             options.port, options.scl, options.sda,
             reinterpret_cast<uintptr_t>(handle));
     }
-
-    i2c_master() = delete;
-    i2c_master(const i2c_master& other) = delete;
-    i2c_master(i2c_master&& other) = delete;
-    i2c_master& operator=(const i2c_master& other) = delete;
-    i2c_master& operator=(i2c_master&& other) = delete;
 public:
     i2c_master(const i2c_master_create_cfg options, i2c_master_bus_handle_t handle)
         : options(options), handle(handle)
     {
         log_key = make_log_key();
     }
+
+    i2c_master() = delete;
+    i2c_master(const i2c_master& other) = delete;
+    i2c_master(i2c_master&& other) = delete;
+    i2c_master& operator=(const i2c_master& other) = delete;
+    i2c_master& operator=(i2c_master&& other) = delete;
 
     ~i2c_master()
     {

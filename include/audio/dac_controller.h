@@ -123,7 +123,8 @@ private:
                     if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 50 / portTICK_PERIOD_MS);
                         maybe_tones_handle != nullptr)
                     {
-                        local_tone_data = std::move(self->tone_data);
+                        // local_tone_data = std::move(self->tone_data);
+                        local_tone_data.clone_from(self->tone_data);
 
                         //Clear change notification if present (do not wait)
                         xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0);
@@ -155,7 +156,8 @@ private:
                                 if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 50 / portTICK_PERIOD_MS);
                                     maybe_tones_handle != nullptr)
                                 {
-                                    local_tone_data = std::move(self->tone_data);
+                                    // local_tone_data = std::move(self->tone_data);
+                                    local_tone_data.clone_from(self->tone_data);
 
                                     //Clear change notification if present (do not wait)
                                     xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0);
@@ -167,6 +169,9 @@ private:
 
                                 FVERBOSE("{} Task {} loading buffer.", LOG_KEY, TASK_NAME);
                                 self->populate_buffer(self->buffer, BUFFER_LEN, next_buffer_offset, local_tone_data);
+
+                                //Reset cursor, as this is a new set of data
+                                cursor = 0;
                             }
                         } while (!xQueueReceive(self->dac_write_queue_handle, &ev, 100 / portTICK_PERIOD_MS));
 
@@ -212,6 +217,7 @@ private:
 
         if (tones.empty()) //No data given. Clear buffer and reset offset.
         {
+            FVERBOSE("{} Clearing working buffer.", LOG_KEY, offset);
             memset(buf, 0, buf_len);
             offset = 0;
             return;
@@ -348,7 +354,8 @@ public:
             if (const auto has_change = !data.sequence_equals(tone_data); has_change)
             {
                 FVERBOSE("{} Writing updated tone data.", LOG_KEY);
-                data = std::move(tone_data);
+                // data = std::move(tone_data);
+                data.clone_from(tone_data);
                 xTaskNotifyIndexed(task, TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, true, eNoAction);
             }
             else

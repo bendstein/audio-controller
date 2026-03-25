@@ -24,9 +24,9 @@ public:
     }
 
     fixed_vec(const fixed_vec& other) = delete;
-    fixed_vec(fixed_vec&& other) noexcept : length(other.length), storage()
+    fixed_vec(fixed_vec&& other) noexcept : length(0), storage()
     {
-        memcpy(storage, other.storage, sizeof(T) * CAPACITY);
+        clone_from(other);
     }
 
     ~fixed_vec() = default;
@@ -45,8 +45,7 @@ public:
         if (this == &other)
             return *this;
 
-        length = other.length;
-        memcpy(storage, other.storage, sizeof(T) * CAPACITY);
+        clone_from(other);
         return *this;
     }
 
@@ -94,6 +93,12 @@ public:
     }
     [[nodiscard]] T& front() { return at(0); }
     [[nodiscard]] T& back() { return at(length - 1); }
+
+    void clone_from(const fixed_vec& other) noexcept
+    {
+        length = other.length;
+        memcpy(storage, other.storage, sizeof(T) * CAPACITY);
+    }
 
     void clear()
     {

@@ -16,14 +16,16 @@
 #include <freertos/task.h>
 #include <sys/_timeval.h>
 
-constexpr auto FLAG_VERBOSE = false; //Whether the application should perform additional debugging/logging logic
+//Whether the application should perform additional debugging/logging logic
+// constexpr auto FLAG_VERBOSE = true;
+constexpr auto FLAG_VERBOSE = false;
 
 constexpr auto US_PER_MS = 1000;
 constexpr auto MS_PER_SECOND = 1000;
 constexpr auto US_PER_SECOND = 1000000;
 constexpr auto PIN_LED_BUILTIN = GPIO_NUM_13;
 constexpr uint8_t LOW = 0;
-constexpr uint8_t HIGH = 0;
+constexpr uint8_t HIGH = 1;
 
 //Doesn't need to be a macro, but I'm doing it to match portTICK_PERIOD_MS being a macro
 #define portTICK_PERIOD_US ((TickType_t)US_PER_MS / portTICK_PERIOD_MS)
@@ -124,7 +126,8 @@ inline void log_message(const std::string& tag, const std::string& message, cons
 
 inline void logv(const std::string& tag, const std::string& message)
 {
-    log_message(tag, message, ESP_LOG_VERBOSE);
+    if constexpr (FLAG_VERBOSE)
+        log_message(tag, message, ESP_LOG_VERBOSE);
 }
 inline void logi(const std::string& tag, const std::string& message)
 {
@@ -157,9 +160,9 @@ inline void loge(const std::string& tag, const std::string& message)
 #define FLOGE(message, ...) LOGE(std::format(message __VA_OPT__(,) __VA_ARGS__))
 
 //Only verbose log if enabled
-#define VERBOSE(message) do { if constexpr(FLAG_VERBOSE) { logv(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, message)); } } while(false)
-#define VERBOSE_LB(message) do { if constexpr(FLAG_VERBOSE) { logv(__FILE_NAME__, std::format("({}:{})\r\n{}", __func__, __LINE__, message)); } } while(false)
-#define FVERBOSE(message, ...) do { if constexpr(FLAG_VERBOSE) { logv(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__))); } } while(false)
-#define FVERBOSE_LB(message, ...) do { if constexpr(FLAG_VERBOSE) { logv(__FILE_NAME__, std::format("({}:{})\r\n{}", __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__))); } } while(false)
+#define VERBOSE(message) do { if constexpr(FLAG_VERBOSE) { LOGV(std::format("({}:{}) {}", __func__, __LINE__, message)); } } while(false)
+#define VERBOSE_LB(message) do { if constexpr(FLAG_VERBOSE) { LOGV(std::format("({}:{})\r\n{}", __func__, __LINE__, message)); } } while(false)
+#define FVERBOSE(message, ...) do { if constexpr(FLAG_VERBOSE) { LOGV(std::format("({}:{}) {}", __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__))); } } while(false)
+#define FVERBOSE_LB(message, ...) do { if constexpr(FLAG_VERBOSE) { LOGV(std::format("({}:{})\r\n{}", __func__, __LINE__, std::format(message __VA_OPT__(,) __VA_ARGS__))); } } while(false)
 
 #endif //AUDIO_CONTROLLER_COMMON_H

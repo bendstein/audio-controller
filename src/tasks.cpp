@@ -30,6 +30,8 @@ void distance_sensor_task(void* task_param_pointer)
         {
             try
             {
+                FVERBOSE("[Bus {}] Looping over {} sensors. (n = {})", bus_index, sensors.size(), i);
+
                 for (auto s = 0; s < sensors.size(); s++)
                 {
                     auto& sensor = sensors[s];
