@@ -123,6 +123,7 @@ private:
                     if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 50 / portTICK_PERIOD_MS);
                         maybe_tones_handle != nullptr)
                     {
+                        FVERBOSE("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
                         // local_tone_data = std::move(self->tone_data);
                         local_tone_data.clone_from(self->tone_data);
 
@@ -156,6 +157,9 @@ private:
                                 if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 50 / portTICK_PERIOD_MS);
                                     maybe_tones_handle != nullptr)
                                 {
+                                    // FVERBOSE("{} Task {} next chord: [].", LOG_KEY, TASK_NAME);
+                                    FVERBOSE("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
+
                                     // local_tone_data = std::move(self->tone_data);
                                     local_tone_data.clone_from(self->tone_data);
 
@@ -222,6 +226,8 @@ private:
             offset = 0;
             return;
         }
+
+        // FLOGI("Chord [{}]", tones[0].name());
 
         for (size_t i = 0; i < buf_len; i++)
         {
@@ -343,9 +349,10 @@ public:
         return dac_controller_start_result::ERR;
     }
 
-    void write(fixed_vec<musical_note_tone, TONE_DATA_CAPACITY>& data)
+    void write(const fixed_vec<musical_note_tone, TONE_DATA_CAPACITY>& data)
     {
-        FVERBOSE("{} Waiting to write {} tones to DAC controller.", LOG_KEY, data.size());
+        FVERBOSE("{} Waiting to write {} tones ([{}]) to DAC controller.", LOG_KEY, data.size(),
+            data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
 
         //Wait to be able to record tone data. If changed, then clone into and notify of change
         if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(tones_mux);
@@ -354,9 +361,13 @@ public:
             if (const auto has_change = !data.sequence_equals(tone_data); has_change)
             {
                 FVERBOSE("{} Writing updated tone data.", LOG_KEY);
+
                 // data = std::move(tone_data);
-                data.clone_from(tone_data);
+                tone_data.clone_from(data);
                 xTaskNotifyIndexed(task, TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, true, eNoAction);
+
+                FVERBOSE("{} New tone data: [{}].", LOG_KEY,
+                    tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
             }
             else
             {

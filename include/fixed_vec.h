@@ -7,6 +7,7 @@
 
 #include <cstring>
 #include <format>
+#include <sstream>
 #include <stdexcept>
 
 template<typename T, size_t CAPACITY> requires (CAPACITY > 0)
@@ -27,6 +28,11 @@ public:
     fixed_vec(fixed_vec&& other) noexcept : length(0), storage()
     {
         clone_from(other);
+    }
+
+    explicit fixed_vec(const T (&data)[CAPACITY]) : length(CAPACITY), storage()
+    {
+        memcpy(storage, data, CAPACITY * sizeof(T));
     }
 
     ~fixed_vec() = default;
@@ -100,6 +106,13 @@ public:
         memcpy(storage, other.storage, sizeof(T) * CAPACITY);
     }
 
+    template<size_t CAPACITY2> requires (CAPACITY > 0 && CAPACITY2 < CAPACITY)
+    void clone_from(const fixed_vec<T, CAPACITY2>& other) noexcept
+    {
+        length = other.size();
+        memcpy(storage, other.data(), sizeof(T) * CAPACITY2);
+    }
+
     void clear()
     {
         length = 0;
@@ -142,6 +155,22 @@ public:
 
         previous_value = storage[i];
         storage[i] = value;
+    }
+
+    std::string to_string(std::string (*to_string)(const T&)) const
+    {
+        std::stringstream ss {};
+
+        auto size = this->size();
+        for (size_t i = 0; i < size; i++)
+        {
+            ss << to_string(at(i));
+
+            if (i + 1 < size)
+                ss << ", ";
+        }
+
+        return ss.str();
     }
 };
 
