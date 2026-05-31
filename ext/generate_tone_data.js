@@ -197,9 +197,9 @@ const args_dft = {
     print: 0,
     printNote: 'A',
     printOctave: 4,
-    octaveMin: 2,
+    octaveMin: 1,
     octaveMax: 8,
-    periods: 2,
+    periods: 1,
     sampleRate: 17
 };
 

@@ -114,18 +114,24 @@ void dac_write_task(void* task_param_pointer)
             FLOGI("{} Inner tasks are started.", dac_controller::LOG_KEY);
         }
 
-        constexpr auto CHORDS_LEN = 1;
-        const fixed_vec<musical_note_tone, 1> chords[CHORDS_LEN]
+        constexpr auto CHORDS_LEN = 3;
+        const fixed_vec<musical_note_tone, 3> chords[CHORDS_LEN]
         {
             fixed_vec({
-                musical_note_tone(musical_note::A, 4)
+                musical_note_tone(musical_note::A, 4),
+                musical_note_tone(musical_note::C, 5),
+                musical_note_tone(musical_note::E, 5)
             }),
-            // fixed_vec({
-            //     musical_note_tone(musical_note::A, 4)
-            // }),
-            // fixed_vec({
-            //     musical_note_tone(musical_note::A, 4)
-            // }),
+            fixed_vec({
+                musical_note_tone(musical_note::B, 4),
+                musical_note_tone(musical_note::D, 5),
+                musical_note_tone(musical_note::G, 5),
+            }),
+            fixed_vec({
+                musical_note_tone(musical_note::C, 5),
+                musical_note_tone(musical_note::G, 5),
+                musical_note_tone(musical_note::E, 5),
+            }),
         };
 
         fixed_vec<musical_note_tone, dac_controller::TONE_DATA_CAPACITY> tone_data {};

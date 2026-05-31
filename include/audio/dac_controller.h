@@ -38,14 +38,42 @@ private:
     static constexpr auto TASK_STACK_SIZE = 0x1000;
     static constexpr size_t TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE = 0;
 
+    /**
+     * Count of DMA descriptors for DAC config,
+     * should be at least 5
+     */
     static constexpr int DAC_CFG_DESC_NUM = 10;
+
+    /**
+     * DMA buffer size for DAC, should be 32-4092, multiple of 4
+     */
     static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 11;
+
+    /**
+     * Sample rate in Hz for DAC
+     */
     static constexpr int DAC_CFG_SAMPLE_RATE = musical_note_data::SAMPLE_RATE;
+
+    /**
+     * Offset of DAC data, -128 to 127
+     */
     static constexpr int DAC_CFG_OFFSET = 0;
 
-    static constexpr size_t MOVING_AVERAGE_LEN = 4;
+    /**
+     * Moving average as filter when populating DAC buffer
+     */
+    static constexpr size_t MOVING_AVERAGE_LEN = 1;
 
+    /**
+     * Buffer where the values for the given tones
+     * are summed, later transferred to DAC buffer
+     */
     static constexpr size_t BUFFER_LEN = 1 << 10;
+
+    /**
+     * Max number of events in the event queue that is populated in ISR,
+     * oldest item is dropped once exceeded
+     */
     static constexpr size_t DAC_WRITE_QUEUE_CAPACITY = 8;
 
     dac_continuous_handle_t handle;
@@ -113,8 +141,93 @@ private:
                 fixed_vec<musical_note_tone, TONE_DATA_CAPACITY> local_tone_data {};
 
                 dac_event_data_t ev;
-                size_t offset = 0;
+                size_t offset = 0; //Offset for calculating data buffer
+                // size_t cursor = 0; //Offset for writing to DAC buffer
 
+                //Read initial tone data
+                FVERBOSE("{} Task {} waiting to read initial tone data to DAC controller.", LOG_KEY, TASK_NAME);
+
+                do
+                {
+                    if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, portMAX_DELAY);
+                        maybe_tones_handle != nullptr)
+                    {
+                        FVERBOSE("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
+                        // local_tone_data = std::move(self->tone_data);
+                        local_tone_data.clone_from(self->tone_data);
+
+                        //Clear change notification if present (do not wait)
+                        xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0);
+                        break;
+                    }
+
+                    FLOGE("{} Didn't successfully acquire mutex to read new tone data. Will retry.", LOG_KEY);
+                    vTaskDelay(50 / portTICK_PERIOD_MS);
+                }
+                while (true);
+
+                do
+                {
+                    //Load data at offset into calculated data buffer
+                    FVERBOSE("{} Task {} loading audio data at {}.", LOG_KEY, TASK_NAME, offset);
+                    self->populate_buffer(self->buffer, BUFFER_LEN, offset, local_tone_data);
+
+                    //Recalculate data buffer when a change event is present while waiting for DAC event.
+                    do
+                    {
+                        if (xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0) == pdTRUE)
+                        {
+                            //Try read in current tone data, but give up and keep going after a short timeout
+                            if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 50 / portTICK_PERIOD_MS);
+                                maybe_tones_handle != nullptr)
+                            {
+                                //Clear change notification if present (do not wait)
+                                xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0);
+
+                                FVERBOSE("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
+                                local_tone_data.clone_from(self->tone_data);
+
+                                //New set of data, reset offset
+                                offset = 0;
+                                FVERBOSE("{} Task {} loading updated audio data at {}.", LOG_KEY, TASK_NAME, offset);
+                                self->populate_buffer(self->buffer, BUFFER_LEN, offset, local_tone_data);
+                            }
+                            else
+                            {
+                                FLOGE("{} Task {} didn't successfully acquire mutex to read new tone data.", LOG_KEY, TASK_NAME);
+                            }
+                        }
+                    }
+                    while (!xQueueReceive(self->dac_write_queue_handle, &ev, 100 / portTICK_PERIOD_MS));
+
+                    FVERBOSE("{} Task {} received DAC event.", LOG_KEY, TASK_NAME);
+
+                    size_t loaded = 0;
+
+                    //Try write to DAC
+                    if (const auto write_result = dac_continuous_write_asynchronously(self->handle,
+                        static_cast<uint8_t*>(ev.buf), ev.buf_size,
+                    // self->buffer + cursor, BUFFER_LEN - cursor, &loaded);
+                    self->buffer, BUFFER_LEN, &loaded);
+                        write_result != ESP_OK)
+                    {
+                        FLOGE("{} Didn't successfully write to DAC DMA buffer in task {}. [0x{:02}] {}", LOG_KEY, TASK_NAME, write_result, esp_err_to_name(write_result));
+                    }
+                    // else
+                    // {
+                    //     cursor += loaded;
+                    // }
+
+                    FVERBOSE("{} Task {} wrote {} bytes to DAC.", LOG_KEY, TASK_NAME, loaded);
+
+                    //If data buffer length is greater than loaded, then not all data was loaded into DAC.
+                    //Reduce offset so that data continues at correct offset.
+                    if (BUFFER_LEN > loaded)
+                        offset -= BUFFER_LEN - loaded;
+                }
+                while (true);
+
+                /*
                 do
                 {
                     //Try read in current tone data, but give up and keep going after a short timeout
@@ -157,7 +270,6 @@ private:
                                 if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 50 / portTICK_PERIOD_MS);
                                     maybe_tones_handle != nullptr)
                                 {
-                                    // FVERBOSE("{} Task {} next chord: [].", LOG_KEY, TASK_NAME);
                                     FVERBOSE("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
 
                                     // local_tone_data = std::move(self->tone_data);
@@ -201,6 +313,7 @@ private:
 
                 }
                 while (true);
+                */
             }
 
             FLOGE("{} Invalid task param for task {}", LOG_KEY, TASK_NAME);
@@ -213,6 +326,12 @@ private:
         do { vTaskDelay(portMAX_DELAY); } while (true);
     }
 
+    /**
+     * @param buf data buffer to write into. Is mutable.
+     * @param buf_len Length of data buffer. Not mutated.
+     * @param offset Current offset int buf. Is mutated with new offset after write.
+     * @param tones Tones to write. Not mutated.
+     */
     void populate_buffer(uint8_t* buf, const size_t buf_len, size_t& offset, const fixed_vec<musical_note_tone, TONE_DATA_CAPACITY>& tones)
     {
         FVERBOSE("{} Populate working buffer starting at offset {}", LOG_KEY, offset);
@@ -254,7 +373,7 @@ private:
 
             for (size_t j = MOVING_AVERAGE_LEN; j > 0; j--)
             {
-                //Loop around to end of buffer (by not more than offset) if moving average would
+                //Loop around to end of buffer (by not more than offset) if moving average index would
                 //be negative
                 if (j <= i) //Within this buffer
                 {
@@ -279,25 +398,7 @@ private:
             buf[i] = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round((1. * moving_average_sum) / moving_average_count)), 0, 0xFF));
         }
 
-        // //Find the value closest to the end that is within epsilon of the
-        // //first value, and use that as the end of the buffer, to help
-        // //with continuity on wrap.
-        // //For some reason, the dac eats the last 256 bytes, so account for
-        // //that here as well
-        // const auto first_value = working_buffer[0];
-        // size_t working_buffer_len = DAC_DOUBLE_BUFFER_SIZE - DAC_LENGTH_ADJUSTMENT;
-        // for (size_t i = DAC_DOUBLE_BUFFER_SIZE - DAC_LENGTH_ADJUSTMENT - 1; i > 0; i--)
-        // {
-        //     const auto current = working_buffer[i];
-        //     if (const auto diff = first_value > current? (first_value - current) : (current - first_value);
-        //         diff <= DAC_ZERO_EPS)
-        //     {
-        //         working_buffer_len = i + 1;
-        //         break;
-        //     }
-        // }
-        //
-        // // working_buffer_len = DAC_DOUBLE_BUFFER_SIZE;
+        offset += buf_len;
     }
 public:
     dac_controller() : handle(nullptr), task(nullptr)
