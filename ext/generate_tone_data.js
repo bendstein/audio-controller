@@ -310,7 +310,7 @@ namespace musical_note_data {
     /**
      * Number of samples processed per second for each sine wave table 
      */
-    constexpr auto args.sampleRate = ${args.sampleRate};
+    constexpr auto SAMPLE_RATE = ${args.sampleRate};
 
     /**
      * The minimum octave present in the table
@@ -325,7 +325,7 @@ namespace musical_note_data {
     /**
      * The maximum length of the tables
      */
-     constexpr size_t MAX_LENGTH = ${Math.max(...note_tables.flatMap(n => n.map(n => n.length)))};
+    constexpr size_t MAX_LENGTH = ${Math.max(...note_tables.flatMap(n => n.map(n => n.length)))};
     
     constexpr size_t ALL_SINE_TABLES_LENGTH_0 = ${NOTE_SYMBOLS.length};
     constexpr size_t ALL_SINE_TABLES_LENGTH_1 = ${1 + args.octaveMax - args.octaveMin};
