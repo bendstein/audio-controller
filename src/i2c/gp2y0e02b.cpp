@@ -10,7 +10,7 @@
 
 bool gp2y0e02b::distance_sensor::ping() const
 {
-    FVERBOSE("[{}] Ping.", get_log_key());
+    FLOGI("[{}] Ping.", get_log_key());
 
     register_map_entry active_standby_entry = {
         .tag = register_map_tag::ACTIVE_STAND_BY_STATE_CONTROL,
@@ -22,7 +22,7 @@ bool gp2y0e02b::distance_sensor::ping() const
 
 bool gp2y0e02b::distance_sensor::try_update_distance_shift(shift_bit* distance_shift_out, shift_bit* prev_distance_shift_out)
 {
-    FVERBOSE("[{}] Update distance shift.", get_log_key());
+    FLOGI("[{}] Update distance shift.", get_log_key());
 
     if (prev_distance_shift_out != nullptr) //Output prev value
         *prev_distance_shift_out = get_distance_shift();
@@ -125,7 +125,7 @@ bool gp2y0e02b::distance_sensor::try_update_distance(uint8_t* distance_out, uint
 
 bool gp2y0e02b::distance_sensor::try_apply_distance_shift(const shift_bit new_shift_bit, shift_bit* prev_distance_shift_out)
 {
-    FVERBOSE("[{}] Apply distance shift.", get_log_key());
+    FLOGI("[{}] Apply distance shift.", get_log_key());
 
     if (prev_distance_shift_out != nullptr) //Output prev value
         *prev_distance_shift_out = get_distance_shift();
@@ -149,7 +149,7 @@ bool gp2y0e02b::distance_sensor::try_apply_distance_shift(const shift_bit new_sh
 
 bool gp2y0e02b::distance_sensor::try_soft_reset()
 {
-    FVERBOSE("[{}] Soft reset.", get_log_key());
+    FLOGW("[{}] Soft reset.", get_log_key());
 
     //Set clock to manual
     constexpr register_map_entry clock_manual_entry = {

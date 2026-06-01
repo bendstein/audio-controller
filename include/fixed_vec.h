@@ -85,15 +85,16 @@ public:
     [[nodiscard]] const T& at(size_t i) const
     {
         if (i >= length)
-            throw std::runtime_error(std::format("Index {} out of range (length = {})", i, length));
+            throw std::runtime_error(std::format("fixed_vec<,>.at | Index {} out of range (length = {})", i, length));
 
         return storage[i];
     }
     [[nodiscard]] const T& front() const { return at(0); }
     [[nodiscard]] const T& back() const { return at(length - 1); }
-    [[nodiscard]] T& at(size_t i)     {
+    [[nodiscard]] T& at(size_t i)
+    {
         if (i >= length)
-            throw std::runtime_error(std::format("Index {} out of range (length = {})", i, length));
+            throw std::runtime_error(std::format("fixed_vec<,>.at | Index {} out of range (length = {})", i, length));
 
         return storage[i];
     }
@@ -132,7 +133,7 @@ public:
     size_t add_to_end(T value)
     {
         if (length == CAPACITY)
-            throw std::runtime_error(std::format("Cannot add past capacity ({})", CAPACITY));
+            throw std::runtime_error(std::format("fixed_vec<,>.add_to_end | Cannot add past capacity ({})", CAPACITY));
 
         size_t index = length++;
         storage[index] = value;
@@ -143,7 +144,7 @@ public:
     size_t grow()
     {
         if (length == CAPACITY)
-            throw std::runtime_error(std::format("Cannot add past capacity ({})", CAPACITY));
+            throw std::runtime_error(std::format("fixed_vec<,>.grow | Cannot add past capacity ({})", CAPACITY));
 
         return length++;
     }
@@ -151,7 +152,7 @@ public:
     void replace_at(T value, size_t i, T& previous_value)
     {
         if (i >= length)
-            throw std::runtime_error(std::format("Index {} out of range (length = {})", i, length));
+            throw std::runtime_error(std::format("fixed_vec<,>.replace_at | Index {} out of range (length = {})", i, length));
 
         previous_value = storage[i];
         storage[i] = value;
@@ -159,18 +160,28 @@ public:
 
     std::string to_string(std::string (*to_string)(const T&)) const
     {
-        std::stringstream ss {};
-
-        auto size = this->size();
-        for (size_t i = 0; i < size; i++)
+        try
         {
-            ss << to_string(at(i));
+            if (empty())
+                return "";
 
-            if (i + 1 < size)
-                ss << ", ";
+            std::stringstream ss {};
+
+            const auto len = size();
+            for (size_t i = 0; i < len; i++)
+            {
+                ss << to_string((*this)[i]);
+
+                if (i + 1 < len)
+                    ss << ", ";
+            }
+
+            return ss.str();
         }
-
-        return ss.str();
+        catch (std::exception& e)
+        {
+            throw std::runtime_error(std::format("fixed_vec<,>.to_string | {}", e.what()));
+        }
     }
 };
 

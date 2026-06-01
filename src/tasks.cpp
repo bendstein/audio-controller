@@ -114,108 +114,90 @@ void dac_write_task(void* task_param_pointer)
             FLOGI("{} Inner tasks are started.", dac_controller::LOG_KEY);
         }
 
-        constexpr auto CHORDS_LEN = 3;
-        const fixed_vec<musical_note_tone, 3> chords[CHORDS_LEN]
-        {
-            fixed_vec({
-                musical_note_tone(musical_note::A, 4),
-                musical_note_tone(musical_note::C, 5),
-                musical_note_tone(musical_note::E, 5)
-            }),
-            fixed_vec({
-                musical_note_tone(musical_note::B, 4),
-                musical_note_tone(musical_note::D, 5),
-                musical_note_tone(musical_note::G, 5),
-            }),
-            fixed_vec({
-                musical_note_tone(musical_note::C, 5),
-                musical_note_tone(musical_note::G, 5),
-                musical_note_tone(musical_note::E, 5),
-            }),
-        };
-
-        fixed_vec<musical_note_tone, dac_controller::TONE_DATA_CAPACITY> tone_data {};
-
-        if constexpr (CHORDS_LEN == 1)
-        {
-            tone_data.clone_from(chords[0]);
-
-            FVERBOSE("Chord {} | [{}]", 0, tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
-
-            dac_controller.write(tone_data);
-        }
-        else
-        {
-            for (size_t i = 0; ; i = (i + 1) % CHORDS_LEN)
-            {
-                tone_data.clone_from(chords[i]);
-
-                FVERBOSE("Chord {} | [{}]", i, tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
-
-                dac_controller.write(tone_data);
-
-                vTaskDelay(3000 / portTICK_PERIOD_MS);
-            }
-        }
-
-        // const float f[]
+        // constexpr auto CHORDS_LEN = 3;
+        // const fixed_vec<musical_note_tone, 3> chords[CHORDS_LEN]
         // {
-        //     musical_note_freq_hz(musical_note::B, 3),
-        //     musical_note_freq_hz(musical_note::D, 4),
-        //     musical_note_freq_hz(musical_note::F, 4),
-        //     musical_note_freq_hz(musical_note::A, 4)
+        //     fixed_vec({
+        //         musical_note_tone(musical_note::A, 4),
+        //         musical_note_tone(musical_note::C, 5),
+        //         musical_note_tone(musical_note::E, 5)
+        //     }),
+        //     fixed_vec({
+        //         musical_note_tone(musical_note::B, 4),
+        //         musical_note_tone(musical_note::D, 5),
+        //         musical_note_tone(musical_note::G, 5),
+        //     }),
+        //     fixed_vec({
+        //         musical_note_tone(musical_note::C, 5),
+        //         musical_note_tone(musical_note::G, 5),
+        //         musical_note_tone(musical_note::E, 5),
+        //     }),
         // };
-        // dac_controller.write(f, sizeof(f) / sizeof(float));
         //
-        // do { vTaskDelay(portMAX_DELAY); } while (true);
-
-        // //Collect the current tones corresponding to each sensor,
-        // //and send them to the DAC controller
         // fixed_vec<musical_note_tone, dac_controller::TONE_DATA_CAPACITY> tone_data {};
-        // fixed_vec<musical_note_tone, dac_controller::TONE_DATA_CAPACITY> tone_data_prev {};
         //
-        // do
+        // if constexpr (CHORDS_LEN == 1)
         // {
-        //     try
+        //     tone_data.clone_from(chords[0]);
+        //
+        //     FLOGD("Chord {} | [{}]", 0, tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
+        //
+        //     dac_controller.write(tone_data);
+        // }
+        // else
+        // {
+        //     for (size_t i = 0; ; i = (i + 1) % CHORDS_LEN)
         //     {
-        //         tone_data.clear();
+        //         tone_data.clone_from(chords[i]);
         //
-        //         //Get frequency in Hz for each sensor, then give to DAC controller
-        //         for (const auto t : app_state->current_tones)
-        //         {
-        //             if (!t.is_invalid() && t != 0) //Frequency = 0 -> Invalid
-        //             {
-        //                 tone_data.add_to_end(t);
-        //             }
-        //         }
+        //         FLOGD("Chord {} | [{}]", i, tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
         //
-        //         //Only write to DAC ctrl if data changed
-        //         if (!tone_data.sequence_equals(tone_data_prev))
-        //         {
-        //             if constexpr (FLAG_VERBOSE)
-        //             {
-        //                 for (auto t = 0; t < tone_data.size(); t++)
-        //                     FVERBOSE("{} Tone: {}", dac_controller::LOG_KEY, tone_data[t].name());
+        //         dac_controller.write(tone_data);
         //
-        //             }
-        //
-        //             tone_data_prev = std::move(tone_data); //Overwrite previous with current data for comparison next iteration
-        //             dac_controller.write(tone_data);
-        //         }
-        //         else
-        //         {
-        //             FVERBOSE("{} Tone data is unchanged during DAC write task.", dac_controller::LOG_KEY);
-        //         }
+        //         vTaskDelay(3000 / portTICK_PERIOD_MS);
         //     }
-        //     catch (std::exception& e)
-        //     {
-        //         FLOGE("{} An exception occurred during DAC write task: {}",
-        //             dac_controller::LOG_KEY,
-        //             e.what());
-        //     }
-        //
-        //     vTaskDelay(100 / portTICK_PERIOD_US);
-        // } while (true);
+        // }
+
+        //Collect the current tones corresponding to each sensor,
+        //and send them to the DAC controller
+        fixed_vec<musical_note_tone, dac_controller::TONE_DATA_CAPACITY> tone_data {};
+        fixed_vec<musical_note_tone, dac_controller::TONE_DATA_CAPACITY> tone_data_prev {};
+
+        do
+        {
+            try
+            {
+                tone_data.clear();
+
+                //Get frequency in Hz for each sensor, then give to DAC controller
+                for (const auto t : app_state->current_tones)
+                {
+                    if (!t.is_invalid())
+                        tone_data.add_to_end(t);
+                }
+
+                //Only write to DAC ctrl if data changed
+                if (!tone_data.sequence_equals(tone_data_prev))
+                {
+                    FLOGD("Tone data changed -> [{}]", tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
+
+                    tone_data_prev.clone_from(tone_data); //Overwrite previous with current data for comparison next iteration
+                    dac_controller.write(tone_data);
+                }
+                else
+                {
+                    FVERBOSE("{} Tone data is unchanged during DAC write task.", dac_controller::LOG_KEY);
+                }
+            }
+            catch (std::exception& e)
+            {
+                FLOGE("{} An exception occurred during DAC write task: {}",
+                    dac_controller::LOG_KEY,
+                    e.what());
+            }
+
+            vTaskDelay(100 / portTICK_PERIOD_US);
+        } while (true);
     }
     catch (std::exception& e)
     {

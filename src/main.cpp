@@ -7,13 +7,19 @@
 void app_main()
 {
     //Set default log level for all
-    esp_log_level_set("*", ESP_LOG_INFO);
+    esp_log_level_set("*", ESP_LOG_DEBUG);
 
     if constexpr (FLAG_VERBOSE) //Enable verbose logging for specific tags
     {
         esp_log_level_set("dac_controller.h", ESP_LOG_VERBOSE);
         // esp_log_level_set("tasks.cpp", ESP_LOG_VERBOSE);
     }
+
+    LOGV("Log level V enabled.");
+    LOGD("Log level D enabled.");
+    LOGI("Log level I enabled.");
+    LOGW("Log level W enabled.");
+    LOGE("Log level E enabled.");
 
 #ifdef CFG_GP2Y0E02B_I2C_ADDR
     //configure_gp2y0e02b never returns, so rest of program is never executed when configuring a sensor

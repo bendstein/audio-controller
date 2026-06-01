@@ -11,16 +11,17 @@
 
 constexpr size_t BUS_COUNT = 2;
 constexpr size_t SENSORS_COUNT = 2;
-constexpr size_t SENSOR_TONES_LEN = 3;
+constexpr size_t SENSOR_TONES_LEN = 4;
 
 constexpr musical_note_tone SENSOR_TONES[SENSORS_COUNT][SENSOR_TONES_LEN]
 {
-    { musical_note_tone(musical_note::A, 4), musical_note_tone(musical_note::A, 5), musical_note_tone::create_invalid() },
-    { musical_note_tone(musical_note::C, 5), musical_note_tone(musical_note::C, 6), musical_note_tone::create_invalid() }
+    { musical_note_tone(musical_note::F, 3), musical_note_tone(musical_note::A, 3), musical_note_tone(musical_note::C, 4), musical_note_tone::create_zero() },
+    { musical_note_tone(musical_note::D, 3), musical_note_tone(musical_note::G, 3), musical_note_tone(musical_note::B_Flat, 3), musical_note_tone::create_zero() }
 };
 
 constexpr float SENSOR_TONES_BREAKPOINTS[SENSOR_TONES_LEN] = {
-    0.4,
+    0.267,
+    0.534,
     0.8,
     1
 };

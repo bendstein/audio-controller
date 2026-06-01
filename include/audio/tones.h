@@ -17,15 +17,22 @@ constexpr float FREQUENCY_HZ_EPS = 0.1; //Consider fr within this amount to be e
 [[nodiscard]]
 constexpr float musical_note_freq_hz(const musical_note note, const uint8_t octave)
 {
+    if (octave == 0) //Special case; if octave is 0, return 0
+        return 0.f;
+
     return FREQUENCY_C0 * std::powf(2, static_cast<float>(static_cast<uint8_t>(note) + (octave * static_cast<uint8_t>(musical_note::MAX))) / (static_cast<uint8_t>(musical_note::MAX) * 1.f));
 }
 
 [[nodiscard]]
 inline const SineTable* get_sine_table_from_note(const musical_note note, const uint8_t octave)
 {
+    if (octave == 0) //Special case; if octave is 0, return empty table
+        return &musical_note_data::SINE_TABLE_EMPTY;
+
     assert(static_cast<size_t>(note) < musical_note_data::ALL_SINE_TABLES_LENGTH_0
         && octave >= musical_note_data::MIN_OCTAVE
         && octave <= musical_note_data::MAX_OCTAVE);
+
     return &musical_note_data::ALL_SINE_TABLES[static_cast<size_t>(note)][octave - musical_note_data::MIN_OCTAVE];
 }
 
@@ -40,6 +47,7 @@ struct musical_note_tone
     musical_note note;
     uint8_t octave;
 
+    [[nodiscard]] bool is_zero() const { return octave == 0; }
     [[nodiscard]] bool is_invalid() const { return octave == 0xFF; }
     [[nodiscard]] const SineTable* sine_table() const { return get_sine_table(*this); }
     [[nodiscard]] float frequency_hz() const { return is_invalid()? 0 : musical_note_freq_hz(note, octave); }
@@ -49,6 +57,7 @@ struct musical_note_tone
     bool operator==(const musical_note_tone& other) const { return check_frequency_equivalency(frequency_hz(), other.frequency_hz()); }
     bool operator==(const float other_hz) const { return check_frequency_equivalency(frequency_hz(), other_hz); }
 
+    [[nodiscard]] static consteval musical_note_tone create_zero() { return musical_note_tone(musical_note::C, 0); }
     [[nodiscard]] static consteval musical_note_tone create_invalid() { return musical_note_tone(musical_note::C, 0xFF); }
     [[nodiscard]] static const SineTable* get_sine_table(const musical_note_tone& tone) { return get_sine_table_from_note(tone.note, tone.octave); }
 };

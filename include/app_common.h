@@ -169,7 +169,7 @@ inline void loge(const std::string& tag, const std::string& message)
 
 #if LOG_LOCAL_LEVEL >= LOG_LEVEL_DEBUG
 
-#define LOGD(message) do { logd(__FILE_NAME__, message); } while(false)
+#define LOGD(message) do { logd(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, message)); } while(false)
 
 #else
 
@@ -199,8 +199,8 @@ inline void loge(const std::string& tag, const std::string& message)
 
 #if LOG_LOCAL_LEVEL >= LOG_LEVEL_ERROR
 
-#define LOGE(message) do { loge(__FILE_NAME__, message); } while(false)
-#define LOGEX(ex) do { loge(__FILE_NAME__, ex.what()); } while(false)
+#define LOGE(message) do { loge(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, message)); } while(false)
+#define LOGEX(ex) do { loge(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, ex.what())); } while(false)
 
 #else
 

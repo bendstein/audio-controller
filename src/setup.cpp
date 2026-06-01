@@ -223,6 +223,8 @@ bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* r
 {
     try
     {
+        FLOGI("Creating task {}.", task_name);
+
         if (!setup->distance_sensors[bus_ndx].empty())
         {
             auto task_param = bus_sensor_task_param {
@@ -273,7 +275,7 @@ bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_
 {
     try
     {
-        FVERBOSE("Creating task {}.", task_name);
+        FLOGI("Creating task {}.", task_name);
 
         if (setup->dac_ctrl != nullptr)
         {
@@ -283,7 +285,7 @@ bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_
 
             TaskHandle_t task_handle;
 
-            FVERBOSE("Calling xTaskCreate for task {}.", task_name);
+            FLOGD("Calling xTaskCreate for task {}.", task_name);
 
             *result_code = xTaskCreate(
                 dac_write_task,
@@ -296,7 +298,7 @@ bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_
 
             setup->dac_write_task = std::make_unique<TaskHandle_t>(task_handle);
 
-            FVERBOSE("Result of xTaskCreate for task {} | Code: 0x{:04X}, Handle: 0x{:08X}",
+            FLOGD("Result of xTaskCreate for task {} | Code: 0x{:04X}, Handle: 0x{:08X}",
                 task_name,
                 static_cast<int>(*result_code),
                 reinterpret_cast<uintptr_t>(task_handle));

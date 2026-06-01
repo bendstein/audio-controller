@@ -329,6 +329,11 @@ namespace musical_note_data {
     
     constexpr size_t ALL_SINE_TABLES_LENGTH_0 = ${NOTE_SYMBOLS.length};
     constexpr size_t ALL_SINE_TABLES_LENGTH_1 = ${1 + args.octaveMax - args.octaveMin};
+    
+    /**
+     * An empty sine table
+     */
+    constexpr auto SINE_TABLE_EMPTY = SineTable { .length = 0, .data = nullptr };
 
     /**
      * 2D array mapping musical note + octave to a table sampling its sine wave
