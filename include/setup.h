@@ -8,22 +8,6 @@
 #include "app_state.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
-struct setup_cfg_dev
-{
-    uint8_t address;
-    uint8_t bus_num;
-};
-
-static constexpr i2c_master_create_cfg BUS_OPTIONS[BUS_COUNT] = {
-    { .port = I2C_NUM_0, .scl = GPIO_NUM_20, .sda = GPIO_NUM_22 },
-    { .port = I2C_NUM_1, .scl = GPIO_NUM_19, .sda = GPIO_NUM_5 }
-};
-
-static constexpr setup_cfg_dev SENSOR_CFG[SENSORS_COUNT] = {
-    { .address = gp2y0e02b::distance_sensor::I2C_ADDR_DFT, .bus_num = 0 },
-    { .address = gp2y0e02b::distance_sensor::I2C_ADDR_DFT, .bus_num = 1 }
-};
-
 // static constexpr setup_cfg_dev DAC_CFG = { .address = mcp4725::dac::I2C_ADDR_DFT, .bus_num = 0 };
 
 [[nodiscard]] app_state do_setup();

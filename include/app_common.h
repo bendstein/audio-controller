@@ -23,6 +23,21 @@
 #include <freertos/task.h>
 #include <sys/_timeval.h>
 
+//Doesn't need to be a macro, but I'm doing it to match portTICK_PERIOD_MS being a macro
+#define portTICK_PERIOD_US ((TickType_t)US_PER_MS / portTICK_PERIOD_MS)
+
+//Change parameter into HIGH or LOW for digital write
+#define DIGITAL(boolean_value) (boolean_value ? HIGH : LOW)
+
+//Change HIGH/LOW to bool
+#define DIGITAL_BOOL(int_value) (int_value != LOW)
+
+//Change HIGH/LOW to LOW/HIGH
+#define INVERT_DIGITAL(int_value) (int_value == LOW? HIGH : LOW)
+
+//Macro parameter as raw string
+#define NAMEOF(var) #var
+
 //Whether the application should perform additional debugging/logging logic
 constexpr auto FLAG_VERBOSE = LOG_LOCAL_LEVEL >= LOG_LEVEL_VERBOSE;
 // constexpr auto FLAG_VERBOSE = false;
@@ -33,12 +48,6 @@ constexpr auto US_PER_SECOND = 1000000;
 constexpr auto PIN_LED_BUILTIN = GPIO_NUM_13;
 constexpr uint8_t LOW = 0;
 constexpr uint8_t HIGH = 1;
-
-//Doesn't need to be a macro, but I'm doing it to match portTICK_PERIOD_MS being a macro
-#define portTICK_PERIOD_US ((TickType_t)US_PER_MS / portTICK_PERIOD_MS)
-
-//Change parameter into HIGH or LOW for digital write
-#define DIGITAL(boolean_value) boolean_value ? HIGH : LOW
 
 /**
  * Count the number of set bits in an integer value,

@@ -19,7 +19,7 @@ class rtos_semaphore_handle
     bool from_isr = false;
     BaseType_t* higher_priority_task_woken = nullptr;
 public:
-    rtos_semaphore_handle() : semaphore(nullptr), from_isr(false), higher_priority_task_woken(nullptr) {}
+    rtos_semaphore_handle() = default;
     explicit rtos_semaphore_handle(const SemaphoreHandle_t semaphore) : rtos_semaphore_handle()
     {
         if (const auto take_result = xSemaphoreTake(semaphore, portMAX_DELAY);
