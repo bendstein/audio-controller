@@ -12,7 +12,7 @@
 #define LOG_LEVEL_DEBUG     4
 #define LOG_LEVEL_VERBOSE   5
 
-#define LOG_LOCAL_LEVEL LOG_LEVEL_INFO
+#define LOG_LOCAL_LEVEL LOG_LEVEL_DEBUG
 
 #include <esp_log.h>
 #include <string>
@@ -38,7 +38,16 @@ constexpr uint8_t HIGH = 1;
 #define portTICK_PERIOD_US ((TickType_t)US_PER_MS / portTICK_PERIOD_MS)
 
 //Change parameter into HIGH or LOW for digital write
-#define DIGITAL(boolean_value) boolean_value ? HIGH : LOW
+#define DIGITAL(boolean_value) (boolean_value ? HIGH : LOW)
+
+//Change HIGH/LOW to bool
+#define DIGITAL_BOOL(int_value) (int_value != LOW)
+
+//Change HIGH/LOW to LOW/HIGH
+#define INVERT_DIGITAL(int_value) (int_value == LOW? HIGH : LOW)
+
+//Macro parameter as raw string
+#define NAMEOF(var) #var
 
 /**
  * Count the number of set bits in an integer value,

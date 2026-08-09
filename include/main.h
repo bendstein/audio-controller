@@ -11,10 +11,11 @@
 
 // #define CFG_GP2Y0E02B_I2C_ADDR (0x10)
 
-#ifdef CFG_GP2Y0E02B_I2C_ADDR
 [[noreturn]]
-void configure_gp2y0e02b();
-#endif
+void main_standard();
+
+[[noreturn]]
+void main_configure_gp2y0e02b();
 
 extern "C" {
     [[noreturn]]

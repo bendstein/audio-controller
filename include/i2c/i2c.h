@@ -26,7 +26,7 @@ public:
     static constexpr auto GLITCH_CT_DFT = 7;
     static constexpr auto INTERRUPT_PRIORITY_DFT = 0;
     static constexpr auto TRANS_QUEUE_DEPTH_DFT = 0;
-    static constexpr auto INTERNAL_PULLUP_DFT = 0;
+    static constexpr auto INTERNAL_PULLUP_DFT = 1;
     static constexpr auto ALLOW_SLEEP_DFT = 0;
 private:
     const i2c_master_create_cfg options;

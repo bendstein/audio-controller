@@ -35,4 +35,25 @@ struct app_state
     std::unique_ptr<TaskHandle_t> sensor_tasks[BUS_COUNT];
     musical_note_tone current_tones[SENSORS_COUNT];
 };
+
+enum struct main_method_type
+{
+    standard,
+    configure_gp2y0e02b
+};
+
+constexpr const char* main_method_type_names[] = {
+    NAMEOF(main_method_type::standard),
+    NAMEOF(main_method_type::configure_gp2y0e02b)
+};
+
+//Which mode the application is running in
+#ifdef CFG_GP2Y0E02B_I2C_ADDR
+constexpr auto MAIN_METHOD_TYPE = main_method_type::configure_gp2y0e02b;
+#else
+constexpr auto MAIN_METHOD_TYPE = main_method_type::standard;
+#endif
+
+constexpr auto MAIN_METHOD_TYPE_NAME = main_method_type_names[static_cast<uint32_t>(MAIN_METHOD_TYPE)];
+
 #endif //AUDIO_CONTROLLER_APP_STATE_H

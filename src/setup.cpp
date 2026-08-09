@@ -88,15 +88,23 @@ void init_distance_sensors(app_state* setup)
                 //Configure sensor
                 FLOGI("{} Configuring sensor.", sensors[sensor_index]->get_log_key());
 
+                // //Try ping
+                // FLOGI("{} Pinging sensor.", sensors[sensor_index]->get_log_key());
+                // if (!sensors[sensor_index]->ping())
+                // {
+                //     setup_successful = false;
+                //     FLOGE("{} Failed to ping sensor.", sensors[sensor_index]->get_log_key());
+                // }
+
                 //Perform soft reset of sensor to make sure
                 //all settings are at initial default
-                if (!sensors[sensor_index]->try_soft_reset())
+                if (setup_successful && !sensors[sensor_index]->try_soft_reset())
                 {
                     setup_successful = false;
                     FLOGE("{} Failed to perform software reset.", sensors[sensor_index]->get_log_key());
                 }
 
-                if (!sensors[sensor_index]->try_apply_distance_shift(gp2y0e02b::shift_bit::cm_128))
+                if (setup_successful && !sensors[sensor_index]->try_apply_distance_shift(gp2y0e02b::shift_bit::cm_128))
                 {
                     setup_successful = false;
                     FLOGE("{} Failed to apply distance shift.", sensors[sensor_index]->get_log_key());
@@ -133,6 +141,8 @@ void init_distance_sensors(app_state* setup)
     }
 
     //Setup tasks for each bus
+    auto all_empty = true;
+
     for (auto i = 0; i < BUS_COUNT; i++)
     {
         FLOGI("Creating distance sensor task for I2C bus {}.", i);
@@ -142,6 +152,8 @@ void init_distance_sensors(app_state* setup)
             FLOGW("I2C bus {} has no distance sensors.", i);
             continue;
         }
+
+        all_empty = false;
 
         BaseType_t create_task_result;
         if (const auto init_task_success = try_create_distance_sensor_task(std::format("<i2c-bus-0x{:02X}>", i), &create_task_result, i, setup);
@@ -157,6 +169,10 @@ void init_distance_sensors(app_state* setup)
             FLOGE("Failed to create distance sensor task for I2C bus {}: 0x{:04X}", i, create_task_result);
         }
     }
+
+    //If every bus is empty, throw
+    if (all_empty)
+        throw std::runtime_error("Failed to setup distance sensor tasks. All buses are empty of distance sensors.");
 }
 
 void init_dac_controller(app_state* setup)
