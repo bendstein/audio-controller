@@ -15,11 +15,12 @@ app_state do_setup()
         .dac_write_task = nullptr,
         .distance_sensors = {},
         .sensor_tasks = {},
-        .current_tones = {}
+        .current_tones = {},
+        .current_distances = {}
     };
 
     for (auto& current_tone : setup.current_tones)
-        current_tone = musical_note_tone::create_invalid();
+        current_tone = musical_note_tone_volume::create_invalid();
 
     init_i2c_buses(&setup);
     init_distance_sensors(&setup);

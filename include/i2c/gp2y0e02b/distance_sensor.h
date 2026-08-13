@@ -92,9 +92,15 @@ namespace gp2y0e02b
         /**
          * @return Current state of this value
          * @remark Doesn't query sensor register, uses cached value. Use corresponding update_*
-         *         method to update cached value.
+         *         method to update cached value from device.
          */
         [[nodiscard]] uint8_t get_distance() const { return state.distance; }
+
+        /**
+         * @param new_distance The new distance to set
+         * @remark Doesn't touch sensor registers, only updates cached value.
+         */
+        void set_distance(const uint8_t new_distance) { state.distance = new_distance; }
 
         /**
          * @return Current state of this value

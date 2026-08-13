@@ -197,10 +197,10 @@ const args_dft = {
     print: 0,
     printNote: 'A',
     printOctave: 4,
-    octaveMin: 1,
-    octaveMax: 8,
+    octaveMin: 3,
+    octaveMax: 7,
     periods: 1,
-    sampleRate: 17
+    sampleRate: 12
 };
 
 const args = {
@@ -329,6 +329,7 @@ namespace musical_note_data {
     
     constexpr size_t ALL_SINE_TABLES_LENGTH_0 = ${NOTE_SYMBOLS.length};
     constexpr size_t ALL_SINE_TABLES_LENGTH_1 = ${1 + args.octaveMax - args.octaveMin};
+    constexpr size_t ALL_SINE_TABLES_LENGTH = ALL_SINE_TABLES_LENGTH_0 * ALL_SINE_TABLES_LENGTH_1;
     
     /**
      * An empty sine table

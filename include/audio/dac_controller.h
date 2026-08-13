@@ -42,12 +42,12 @@ private:
      * Count of DMA descriptors for DAC config,
      * should be at least 5
      */
-    static constexpr int DAC_CFG_DESC_NUM = 10;
+    static constexpr int DAC_CFG_DESC_NUM = 1 << 2;
 
     /**
      * DMA buffer size for DAC, should be 32-4092, multiple of 4
      */
-    static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 11;
+    static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 5;
 
     /**
      * Sample rate in Hz for DAC
@@ -62,13 +62,13 @@ private:
     /**
      * Moving average as filter when populating DAC buffer
      */
-    static constexpr size_t MOVING_AVERAGE_LEN = 1;
+    static constexpr size_t MOVING_AVERAGE_LEN = 0;
 
     /**
      * Buffer where the values for the given tones
      * are summed, later transferred to DAC buffer
      */
-    static constexpr size_t BUFFER_LEN = 1 << 10;
+    static constexpr size_t BUFFER_LEN = DAC_CFG_DESC_NUM * DAC_CFG_BUFFER_SIZE;
 
     /**
      * Max number of events in the event queue that is populated in ISR,
@@ -81,7 +81,7 @@ private:
 
     uint8_t* buffer;
 
-    fixed_vec<musical_note_tone, TONE_DATA_CAPACITY> tone_data {};
+    fixed_vec<musical_note_tone_volume, TONE_DATA_CAPACITY> tone_data {};
 
     SemaphoreHandle_t tones_mux;
     SemaphoreHandle_t task_started_sem;
@@ -142,7 +142,7 @@ private:
             {
                 dac_event_data_t ev;
                 size_t offset = 0; //Offset for calculating data buffer
-                fixed_vec<musical_note_tone, TONE_DATA_CAPACITY> local_tone_data {};
+                fixed_vec<musical_note_tone_volume, TONE_DATA_CAPACITY> local_tone_data {};
 
                 //Read initial tone data
                 FLOGI("{} Task {} waiting to read initial tone data to DAC controller.", LOG_KEY, TASK_NAME);
@@ -152,7 +152,7 @@ private:
                     if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, portMAX_DELAY);
                         maybe_tones_handle != nullptr)
                     {
-                        FLOGD("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
+                        FLOGD("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
                         local_tone_data.clone_from(self->tone_data);
 
                         //Clear change notification if present (do not wait)
@@ -171,6 +171,8 @@ private:
                 {
                     try
                     {
+                        const auto offset_0 = offset;
+
                         //Load data at offset into calculated data buffer
                         FVERBOSE("{} Task {} loading audio data at {}.", LOG_KEY, TASK_NAME, offset);
                         self->populate_buffer(self->buffer, BUFFER_LEN, offset, local_tone_data);
@@ -181,17 +183,17 @@ private:
                             if (xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0) == pdTRUE)
                             {
                                 //Try read in current tone data, but give up and keep going after a short timeout
-                                if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 50 / portTICK_PERIOD_MS);
+                                if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, 10 / portTICK_PERIOD_MS);
                                     maybe_tones_handle != nullptr)
                                 {
                                     //Clear change notification if present (do not wait)
                                     xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0);
 
-                                    FLOGD("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
+                                    FLOGV("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
                                     local_tone_data.clone_from(self->tone_data);
 
-                                    //New set of data, reset offset
-                                    offset = 0;
+                                    // //New set of data, reset offset
+                                    // offset = 0;
                                     FVERBOSE("{} Task {} loading updated audio data at {}.", LOG_KEY, TASK_NAME, offset);
                                     self->populate_buffer(self->buffer, BUFFER_LEN, offset, local_tone_data);
                                 }
@@ -201,27 +203,33 @@ private:
                                 }
                             }
                         }
-                        while (!xQueueReceive(self->dac_write_queue_handle, &ev, 100 / portTICK_PERIOD_MS));
+                        while (!xQueueReceive(self->dac_write_queue_handle, &ev, 10 / portTICK_PERIOD_MS));
 
                         FVERBOSE("{} Task {} received DAC event.", LOG_KEY, TASK_NAME);
 
                         size_t loaded = 0;
 
+                        const auto buffer_len = std::min(ev.buf_size, BUFFER_LEN);
+
                         //Try write to DAC
                         if (const auto write_result = dac_continuous_write_asynchronously(self->handle,
                             static_cast<uint8_t*>(ev.buf), ev.buf_size,
-                            self->buffer, BUFFER_LEN, &loaded);
+                            self->buffer, buffer_len, &loaded);
                             write_result != ESP_OK)
                         {
                             FLOGE("{} Didn't successfully write to DAC DMA buffer in task {}. [0x{:02}] {}", LOG_KEY, TASK_NAME, write_result, esp_err_to_name(write_result));
                         }
 
+                        // gpio_set_level(PIN_LED_BUILTIN, DIGITAL(!local_tone_data.empty()));
+
                         FVERBOSE("{} Task {} wrote {} bytes to DAC.", LOG_KEY, TASK_NAME, loaded);
 
-                        //If data buffer length is greater than loaded, then not all data was loaded into DAC.
-                        //Reduce offset so that data continues at correct offset.
-                        if (BUFFER_LEN > loaded)
-                            offset -= BUFFER_LEN - loaded;
+                        //Set next offset
+                        offset = offset_0 + loaded;
+                        // //If data buffer length is greater than loaded, then not all data was loaded into DAC.
+                        // //Reduce offset so that data continues at correct offset.
+                        // if (BUFFER_LEN > loaded)
+                        //     offset -= BUFFER_LEN - loaded;
                     }
                     catch (std::exception& e)
                     {
@@ -266,7 +274,7 @@ private:
      * @param offset Current offset int buf. Is mutated with new offset after write.
      * @param tones Tones to write. Not mutated.
      */
-    void populate_buffer(uint8_t* buf, const size_t buf_len, size_t& offset, const fixed_vec<musical_note_tone, TONE_DATA_CAPACITY>& tones) const
+    void populate_buffer(uint8_t* buf, const size_t buf_len, size_t& offset, const fixed_vec<musical_note_tone_volume, TONE_DATA_CAPACITY>& tones) const
     {
         try
         {
@@ -282,53 +290,65 @@ private:
                 return;
             }
 
+            // memset(buf, 0xFF, buf_len);
+            // offset = 0;
+            // return;
+
             // FLOGI("Chord [{}]", tones[0].name());
 
             for (size_t i = 0; i < buf_len; i++)
             {
-                //Use data from pre-calculated sine wave tables, average together
+                //Use data from pre-calculated sine wave tables, add together
                 uint32_t sum = 0;
                 size_t tones_used = 0;
 
                 for (auto f = 0; f < tones.size(); f++)
                 {
-                    if (const auto& tone = tones[f]; !tone.is_invalid())
+                    if (const auto& [tone, volume] = tones[f]; volume > 0 && !tone.is_zero_or_invalid())
                     {
-                        sum += tone.sine_table()->get_value(i + offset);
+                        //Adjust value to volume
+                        const auto value = tone.sine_table()->get_value(i + offset);
+                        // sum += value;
+                        sum += static_cast<uint32_t>(value * (static_cast<double>(volume) / 0xFF));
                         tones_used++;
                     }
                 }
 
-                const auto next_value = tones_used == 0
-                    ? 0
-                    : sum / tones_used;
+                // const auto next_value = tones_used == 0
+                //     ? 0
+                //     : sum / tones_used;
+
+                const auto next_value = tones_used == 0? 0 : sum;
 
                 //Apply moving average filter to smooth data
                 int moving_average_sum = static_cast<int>(next_value);
                 int moving_average_count = 1;
 
-                for (size_t j = MOVING_AVERAGE_LEN; j > 0; j--)
+                if constexpr (MOVING_AVERAGE_LEN > 0)
                 {
-                    //Loop around to end of buffer (by not more than offset) if moving average index would
-                    //be negative
-                    if (j <= i) //Within this buffer
+                    for (size_t j = MOVING_AVERAGE_LEN; j > 0; j--)
                     {
-                        moving_average_sum += buf[i - j];
-                    }
-                    else
-                    {
-                        if (const auto ndx_from_end = j - i;
-                            ndx_from_end <= offset)
+                        //Loop around to end of buffer (by not more than offset) if moving average index would
+                        //be negative
+                        if (j <= i) //Within this buffer
                         {
-                            moving_average_sum += buf[buf_len - ndx_from_end];
+                            moving_average_sum += buf[i - j];
                         }
                         else
                         {
-                            break;
+                            if (const auto ndx_from_end = j - i;
+                                ndx_from_end <= offset)
+                            {
+                                moving_average_sum += buf[buf_len - ndx_from_end];
+                            }
+                            else
+                            {
+                                break;
+                            }
                         }
-                    }
 
-                    moving_average_count++;
+                        moving_average_count++;
+                    }
                 }
 
                 buf[i] = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round((1. * moving_average_sum) / moving_average_count)), 0, 0xFF));
@@ -391,10 +411,10 @@ public:
         return dac_controller_start_result::ERR;
     }
 
-    void write(const fixed_vec<musical_note_tone, TONE_DATA_CAPACITY>& data)
+    void write(const fixed_vec<musical_note_tone_volume, TONE_DATA_CAPACITY>& data)
     {
-        FLOGD("{} Waiting to write {} tones ([{}]) to DAC controller.", LOG_KEY, data.size(),
-            data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
+        FLOGV("{} Waiting to write {} tones ([{}]) to DAC controller.", LOG_KEY, data.size(),
+            data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
 
         //Wait to be able to record tone data. If changed, then clone into and notify of change
         if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(tones_mux);
@@ -402,17 +422,17 @@ public:
         {
             if (const auto has_change = !data.sequence_equals(tone_data); has_change)
             {
-                FLOGD("{} Writing updated tone data.", LOG_KEY);
+                FLOGV("{} Writing updated tone data.", LOG_KEY);
 
                 tone_data.clone_from(data);
                 xTaskNotifyIndexed(task, TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, true, eNoAction);
 
-                FVERBOSE("{} New tone data: [{}].", LOG_KEY,
-                    tone_data.to_string([](const musical_note_tone& t) -> std::string { return t.name(); }));
+                FLOGV("{} New tone data: [{}].", LOG_KEY,
+                    tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
             }
             else
             {
-                FLOGD("{} Tone data is unchanged.", LOG_KEY);
+                FLOGV("{} Tone data is unchanged.", LOG_KEY);
             }
         }
         else

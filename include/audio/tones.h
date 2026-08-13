@@ -49,10 +49,23 @@ struct musical_note_tone
 
     [[nodiscard]] bool is_zero() const { return octave == 0; }
     [[nodiscard]] bool is_invalid() const { return octave == 0xFF; }
+    [[nodiscard]] bool is_zero_or_invalid() const { return octave == 0 || octave == 0xFF; }
     [[nodiscard]] const SineTable* sine_table() const { return get_sine_table(*this); }
     [[nodiscard]] float frequency_hz() const { return is_invalid()? 0 : musical_note_freq_hz(note, octave); }
     [[nodiscard]] const char* name(const bool prefer_flat = false) const { return get_note_name(note, octave, prefer_flat); }
     [[nodiscard]] const char* name_no_octave(const bool prefer_flat = false) const { return get_note_name(note, prefer_flat); }
+    [[nodiscard]] size_t sine_table_index() const
+    {
+        if (is_invalid() || octave < musical_note_data::MIN_OCTAVE || octave > musical_note_data::MAX_OCTAVE)
+            return std::numeric_limits<size_t>::max();
+
+        const auto note_number = static_cast<uint8_t>(note);
+
+        if (note_number < 0 || note_number >= musical_note_data::ALL_SINE_TABLES_LENGTH_0)
+            return std::numeric_limits<size_t>::max();
+
+        return note_number * musical_note_data::ALL_SINE_TABLES_LENGTH_1 + (octave - musical_note_data::MIN_OCTAVE);
+    }
 
     bool operator==(const musical_note_tone& other) const { return check_frequency_equivalency(frequency_hz(), other.frequency_hz()); }
     bool operator==(const float other_hz) const { return check_frequency_equivalency(frequency_hz(), other_hz); }
@@ -60,6 +73,21 @@ struct musical_note_tone
     [[nodiscard]] static consteval musical_note_tone create_zero() { return musical_note_tone(musical_note::C, 0); }
     [[nodiscard]] static consteval musical_note_tone create_invalid() { return musical_note_tone(musical_note::C, 0xFF); }
     [[nodiscard]] static const SineTable* get_sine_table(const musical_note_tone& tone) { return get_sine_table_from_note(tone.note, tone.octave); }
+};
+
+struct musical_note_tone_volume
+{
+    musical_note_tone tone;
+    uint8_t volume;
+
+    [[nodiscard]] bool is_zero() const { return volume == 0 || tone.is_zero(); }
+    [[nodiscard]] bool is_invalid() const { return tone.is_invalid(); }
+    [[nodiscard]] bool is_zero_or_invalid() const { return volume == 0 || tone.is_invalid(); }
+
+    bool operator==(const musical_note_tone_volume& other) const { return tone == other.tone && volume == other.volume; }
+
+    [[nodiscard]] static consteval musical_note_tone_volume create_zero() { return musical_note_tone_volume(musical_note_tone::create_zero(), 0); }
+    [[nodiscard]] static consteval musical_note_tone_volume create_invalid() { return musical_note_tone_volume(musical_note_tone::create_invalid(), 0); }
 };
 
 #endif //AUDIO_CONTROLLER_TONES_H
