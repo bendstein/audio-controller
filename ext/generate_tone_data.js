@@ -196,11 +196,11 @@ const args_dft = {
     printFile: true,
     print: 0,
     printNote: 'A',
-    printOctave: 4,
+    printOctave: 5,
     octaveMin: 3,
     octaveMax: 7,
     periods: 1,
-    sampleRate: 12
+    sampleRate: 15
 };
 
 const args = {

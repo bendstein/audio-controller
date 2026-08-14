@@ -16,7 +16,6 @@
 
 #include "app_common.h"
 #include "rtos_utils.h"
-#include "i2c/mcp4725.h"
 #include "fixed_vec.h"
 #include "tones.h"
 
@@ -25,6 +24,21 @@ enum struct dac_controller_start_result
     OK,
     ERR,
     ALREADY_STARTED
+};
+
+struct dac_controller_tone
+{
+    musical_note_tone_volume tone;
+    uint32_t period;
+
+    [[nodiscard]] bool is_zero() const { return period == 0 || tone.is_zero(); }
+    [[nodiscard]] bool is_invalid() const { return tone.is_invalid(); }
+    [[nodiscard]] bool is_zero_or_invalid() const { return period == 0 || tone.is_invalid(); }
+
+    bool operator==(const dac_controller_tone& other) const { return tone == other.tone && period == other.period; }
+
+    [[nodiscard]] static consteval dac_controller_tone create_zero() { return dac_controller_tone(musical_note_tone_volume::create_zero(), 0); }
+    [[nodiscard]] static consteval dac_controller_tone create_invalid() { return dac_controller_tone(musical_note_tone_volume::create_invalid(), 0); }
 };
 
 class dac_controller
@@ -52,7 +66,7 @@ private:
     /**
      * Sample rate in Hz for DAC
      */
-    static constexpr int DAC_CFG_SAMPLE_RATE = musical_note_data::SAMPLE_RATE;
+    static constexpr int DAC_CFG_SAMPLE_RATE = 1 << 15;
 
     /**
      * Offset of DAC data, -128 to 127
@@ -69,6 +83,17 @@ private:
      * are summed, later transferred to DAC buffer
      */
     static constexpr size_t BUFFER_LEN = DAC_CFG_DESC_NUM * DAC_CFG_BUFFER_SIZE;
+
+    /**
+     * 1 / duty cycle for square wave
+     */
+    static constexpr uint8_t DUTY_CYCLE = 2;
+
+    /**
+     * Period is multiplied by this to maintain some precision
+     * while still storing as an int
+     */
+    static constexpr uint32_t PERIOD_FACTOR = 100;
 
     /**
      * Max number of events in the event queue that is populated in ISR,
@@ -142,7 +167,7 @@ private:
             {
                 dac_event_data_t ev;
                 size_t offset = 0; //Offset for calculating data buffer
-                fixed_vec<musical_note_tone_volume, TONE_DATA_CAPACITY> local_tone_data {};
+                fixed_vec<dac_controller_tone, TONE_DATA_CAPACITY> local_tone_data {};
 
                 //Read initial tone data
                 FLOGI("{} Task {} waiting to read initial tone data to DAC controller.", LOG_KEY, TASK_NAME);
@@ -153,7 +178,18 @@ private:
                         maybe_tones_handle != nullptr)
                     {
                         FLOGD("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
-                        local_tone_data.clone_from(self->tone_data);
+                        local_tone_data.clear();
+
+                        for (auto i = 0; i < self->tone_data.size(); i++)
+                        {
+                            const auto tone = self->tone_data[i];
+                            local_tone_data.add_to_end({
+                                .tone = tone,
+                                .period = tone.is_zero_or_invalid()
+                                    ? 0
+                                    : static_cast<uint32_t>(PERIOD_FACTOR * DAC_CFG_SAMPLE_RATE / tone.tone.frequency_hz())
+                            });
+                        }
 
                         //Clear change notification if present (do not wait)
                         xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0);
@@ -190,10 +226,19 @@ private:
                                     xTaskNotifyWaitIndexed(TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE, 0, 0, nullptr, 0);
 
                                     FLOGV("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
-                                    local_tone_data.clone_from(self->tone_data);
+                                    local_tone_data.clear();
 
-                                    // //New set of data, reset offset
-                                    // offset = 0;
+                                    for (auto i = 0; i < self->tone_data.size(); i++)
+                                    {
+                                        const auto tone = self->tone_data[i];
+                                        local_tone_data.add_to_end({
+                                            .tone = tone,
+                                            .period = tone.is_zero_or_invalid()
+                                                ? 0
+                                                : static_cast<uint32_t>(PERIOD_FACTOR * DAC_CFG_SAMPLE_RATE / tone.tone.frequency_hz())
+                                        });
+                                    }
+
                                     FVERBOSE("{} Task {} loading updated audio data at {}.", LOG_KEY, TASK_NAME, offset);
                                     self->populate_buffer(self->buffer, BUFFER_LEN, offset, local_tone_data);
                                 }
@@ -220,16 +265,10 @@ private:
                             FLOGE("{} Didn't successfully write to DAC DMA buffer in task {}. [0x{:02}] {}", LOG_KEY, TASK_NAME, write_result, esp_err_to_name(write_result));
                         }
 
-                        // gpio_set_level(PIN_LED_BUILTIN, DIGITAL(!local_tone_data.empty()));
-
                         FVERBOSE("{} Task {} wrote {} bytes to DAC.", LOG_KEY, TASK_NAME, loaded);
 
                         //Set next offset
-                        offset = offset_0 + loaded;
-                        // //If data buffer length is greater than loaded, then not all data was loaded into DAC.
-                        // //Reduce offset so that data continues at correct offset.
-                        // if (BUFFER_LEN > loaded)
-                        //     offset -= BUFFER_LEN - loaded;
+                        offset = offset_0 + ev.buf_size;
                     }
                     catch (std::exception& e)
                     {
@@ -274,7 +313,7 @@ private:
      * @param offset Current offset int buf. Is mutated with new offset after write.
      * @param tones Tones to write. Not mutated.
      */
-    void populate_buffer(uint8_t* buf, const size_t buf_len, size_t& offset, const fixed_vec<musical_note_tone_volume, TONE_DATA_CAPACITY>& tones) const
+    void populate_buffer(uint8_t* buf, const size_t buf_len, size_t& offset, const fixed_vec<dac_controller_tone, TONE_DATA_CAPACITY>& tones) const
     {
         try
         {
@@ -298,18 +337,27 @@ private:
 
             for (size_t i = 0; i < buf_len; i++)
             {
-                //Use data from pre-calculated sine wave tables, add together
+                //Add together waves for each tone
                 uint32_t sum = 0;
                 size_t tones_used = 0;
 
                 for (auto f = 0; f < tones.size(); f++)
                 {
-                    if (const auto& [tone, volume] = tones[f]; volume > 0 && !tone.is_zero_or_invalid())
+                    if (const auto& [tone_volume, period] = tones[f]; period > 0 && !tone_volume.is_zero_or_invalid())
                     {
-                        //Adjust value to volume
-                        const auto value = tone.sine_table()->get_value(i + offset);
-                        // sum += value;
-                        sum += static_cast<uint32_t>(value * (static_cast<double>(volume) / 0xFF));
+                        const auto& [tone, volume] = tone_volume;
+
+                        // //Pre-calculated sine table
+                        // //Adjust value to volume
+                        // const auto value = tone.sine_table()->get_value(i + offset);
+                        // sum += static_cast<uint32_t>(value * (static_cast<double>(volume) / 0xFF));
+
+                        //Square wave
+                        if ((PERIOD_FACTOR * (i + offset)) % period <= period / DUTY_CYCLE)
+                        {
+                            sum += volume;
+                        }
+
                         tones_used++;
                     }
                 }
@@ -320,12 +368,12 @@ private:
 
                 const auto next_value = tones_used == 0? 0 : sum;
 
-                //Apply moving average filter to smooth data
-                int moving_average_sum = static_cast<int>(next_value);
-                int moving_average_count = 1;
-
                 if constexpr (MOVING_AVERAGE_LEN > 0)
                 {
+                    //Apply moving average filter to smooth data
+                    int moving_average_sum = static_cast<int>(next_value);
+                    int moving_average_count = 1;
+
                     for (size_t j = MOVING_AVERAGE_LEN; j > 0; j--)
                     {
                         //Loop around to end of buffer (by not more than offset) if moving average index would
@@ -349,9 +397,13 @@ private:
 
                         moving_average_count++;
                     }
-                }
 
-                buf[i] = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round((1. * moving_average_sum) / moving_average_count)), 0, 0xFF));
+                    buf[i] = static_cast<uint8_t>(std::clamp(static_cast<int>(std::round((1. * moving_average_sum) / moving_average_count)), 0, 0xFF));
+                }
+                else
+                {
+                    buf[i] = static_cast<uint8_t>(std::clamp(next_value, 0UL, 0xFFUL));
+                }
             }
 
             offset += buf_len;

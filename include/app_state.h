@@ -17,7 +17,7 @@ constexpr uint8_t MAX_INDIVIDUAL_VOLUME_THRESHOLD = static_cast<uint8_t>(0.95 * 
 
 constexpr musical_note_tone SENSOR_TONES[SENSORS_COUNT][SENSOR_TONES_LEN]
 {
-    { musical_note_tone(musical_note::A, 5) },
+    { musical_note_tone(musical_note::A, 4) },
     { musical_note_tone(musical_note::F, 4) }
 };
 

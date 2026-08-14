@@ -58,7 +58,8 @@ void distance_sensor_task(void* task_param_pointer)
                         //Update state
                         app_state->current_distances[sensor_index] = distance;
 
-                        const auto volume = static_cast<uint8_t>((static_cast<float>(distance) / static_cast<float>(current_max_distance)) * MAX_INDIVIDUAL_VOLUME);
+                        // const auto volume = static_cast<uint8_t>((static_cast<float>(distance) / static_cast<float>(current_max_distance)) * MAX_INDIVIDUAL_VOLUME);
+                        const uint8_t volume = sensor_index == 0? 30 : 0;
                         const auto tone = volume >= MAX_INDIVIDUAL_VOLUME_THRESHOLD
                             ? musical_note_tone::create_invalid()
                             : SENSOR_TONES[sensor_index][0];
