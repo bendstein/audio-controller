@@ -1,6 +1,7 @@
 #include "main.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 #include "setup.h"
+#include "audio/signal_generator.h"
 #include "driver/gpio.h"
 
 [[noreturn]]
@@ -37,6 +38,34 @@ void app_main()
         //
         //     VERBOSE("Successfully created log_tasks_task.");
         // }
+
+        // const auto sgn = signal_generator::try_create();
+        // sgn->start();
+        //
+        // signal_generator::tone_vec_t tone_data {};
+        //
+        // tone_data.add_to_end({
+        //     .tone = {
+        //         .note = musical_note::A,
+        //         .octave = 4
+        //     },
+        //     .volume = 40
+        // });
+        //
+        // tone_data.add_to_end({
+        //     .tone = {
+        //         .note = musical_note::C,
+        //         .octave = 4
+        //     },
+        //     .volume = 40
+        // });
+        //
+        // sgn->update_tones(&tone_data);
+        //
+        // while (true)
+        // {
+        //     vTaskDelay(portMAX_DELAY);
+        // } //Make sure to never return
 
         //Call correct main method
         if constexpr (MAIN_METHOD_TYPE == main_method_type::configure_gp2y0e02b)

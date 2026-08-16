@@ -30,7 +30,8 @@ static constexpr setup_cfg_dev SENSOR_CFG[SENSORS_COUNT] = {
 
 void init_i2c_buses(app_state* app_state);
 void init_distance_sensors(app_state* setup);
-void init_dac_controller(app_state* setup);
+// void init_dac_controller(app_state* setup);
+void init_signal_generator(app_state* setup);
 bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, size_t bus_ndx, app_state* setup);
 bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_code, app_state* setup);
 

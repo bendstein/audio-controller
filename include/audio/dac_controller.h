@@ -48,7 +48,7 @@ public:
     static constexpr size_t TONE_DATA_CAPACITY = 32;
 private:
     static constexpr auto TASK_NAME = "<DAC Ctrl>";
-    static constexpr auto TASK_PRIORITY = 2;
+    static constexpr auto TASK_PRIORITY = 8;
     static constexpr auto TASK_STACK_SIZE = 0x1000;
     static constexpr size_t TASK_MESSAGE_QUEUE_INDEX_TONE_CHANGE = 0;
 
@@ -61,12 +61,12 @@ private:
     /**
      * DMA buffer size for DAC, should be 32-4092, multiple of 4
      */
-    static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 5;
+    static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 6;
 
     /**
      * Sample rate in Hz for DAC
      */
-    static constexpr int DAC_CFG_SAMPLE_RATE = 1 << 15;
+    static constexpr int DAC_CFG_SAMPLE_RATE = 1 << 16;
 
     /**
      * Offset of DAC data, -128 to 127
@@ -82,7 +82,7 @@ private:
      * Buffer where the values for the given tones
      * are summed, later transferred to DAC buffer
      */
-    static constexpr size_t BUFFER_LEN = DAC_CFG_DESC_NUM * DAC_CFG_BUFFER_SIZE;
+    static constexpr size_t BUFFER_LEN = 4 * DAC_CFG_BUFFER_SIZE;
 
     /**
      * 1 / duty cycle for square wave
@@ -93,13 +93,13 @@ private:
      * Period is multiplied by this to maintain some precision
      * while still storing as an int
      */
-    static constexpr uint32_t PERIOD_FACTOR = 100;
+    static constexpr uint32_t PERIOD_FACTOR = 10;
 
     /**
      * Max number of events in the event queue that is populated in ISR,
      * oldest item is dropped once exceeded
      */
-    static constexpr size_t DAC_WRITE_QUEUE_CAPACITY = 8;
+    static constexpr size_t DAC_WRITE_QUEUE_CAPACITY = 4;
 
     dac_continuous_handle_t handle;
     TaskHandle_t task;
@@ -177,7 +177,7 @@ private:
                     if (const auto maybe_tones_handle = rtos_semaphore_handle::try_take(self->tones_mux, portMAX_DELAY);
                         maybe_tones_handle != nullptr)
                     {
-                        FLOGD("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
+                        FLOGV("{} Task {} next chord: [{}]", LOG_KEY, TASK_NAME, self->tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
                         local_tone_data.clear();
 
                         for (auto i = 0; i < self->tone_data.size(); i++)
@@ -187,7 +187,7 @@ private:
                                 .tone = tone,
                                 .period = tone.is_zero_or_invalid()
                                     ? 0
-                                    : static_cast<uint32_t>(PERIOD_FACTOR * DAC_CFG_SAMPLE_RATE / tone.tone.frequency_hz())
+                                    : static_cast<uint32_t>(PERIOD_FACTOR * DAC_CFG_SAMPLE_RATE / static_cast<double>(tone.tone.frequency_hz()))
                             });
                         }
 
@@ -207,7 +207,7 @@ private:
                 {
                     try
                     {
-                        const auto offset_0 = offset;
+                        // const auto offset_0 = offset;
 
                         //Load data at offset into calculated data buffer
                         FVERBOSE("{} Task {} loading audio data at {}.", LOG_KEY, TASK_NAME, offset);
@@ -235,7 +235,7 @@ private:
                                             .tone = tone,
                                             .period = tone.is_zero_or_invalid()
                                                 ? 0
-                                                : static_cast<uint32_t>(PERIOD_FACTOR * DAC_CFG_SAMPLE_RATE / tone.tone.frequency_hz())
+                                                : static_cast<uint32_t>(PERIOD_FACTOR * DAC_CFG_SAMPLE_RATE / static_cast<double>(tone.tone.frequency_hz()))
                                         });
                                     }
 
@@ -268,7 +268,7 @@ private:
                         FVERBOSE("{} Task {} wrote {} bytes to DAC.", LOG_KEY, TASK_NAME, loaded);
 
                         //Set next offset
-                        offset = offset_0 + ev.buf_size;
+                        // offset = offset_0 + ev.buf_size;
                     }
                     catch (std::exception& e)
                     {
@@ -357,6 +357,9 @@ private:
                         {
                             sum += volume;
                         }
+
+                        ////Sine wave
+                        // sum += static_cast<uint32_t>((sin(6.18 * static_cast<double>(i + offset) * PERIOD_FACTOR / period) + 1) * 0xFF / 2);
 
                         tones_used++;
                     }

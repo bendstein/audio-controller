@@ -7,6 +7,7 @@
 
 #include "fixed_vec.h"
 #include "audio/dac_controller.h"
+#include "audio/signal_generator.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
 constexpr size_t BUS_COUNT = 2;
@@ -28,7 +29,8 @@ constexpr float SENSOR_TONES_BREAKPOINTS[SENSOR_TONES_LEN] = {
 struct app_state
 {
     std::unique_ptr<i2c_master> i2c_buses[BUS_COUNT];
-    std::unique_ptr<dac_controller> dac_ctrl;
+    // std::unique_ptr<dac_controller> dac_ctrl;
+    std::unique_ptr<signal_generator> signal_gtor;
     std::unique_ptr<TaskHandle_t> dac_write_task;
     fixed_vec<std::unique_ptr<gp2y0e02b::distance_sensor>, SENSORS_COUNT> distance_sensors[BUS_COUNT];
     std::unique_ptr<TaskHandle_t> sensor_tasks[BUS_COUNT];

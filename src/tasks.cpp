@@ -58,8 +58,8 @@ void distance_sensor_task(void* task_param_pointer)
                         //Update state
                         app_state->current_distances[sensor_index] = distance;
 
-                        // const auto volume = static_cast<uint8_t>((static_cast<float>(distance) / static_cast<float>(current_max_distance)) * MAX_INDIVIDUAL_VOLUME);
-                        const uint8_t volume = sensor_index == 0? 30 : 0;
+                        const auto volume = static_cast<uint8_t>((static_cast<float>(distance) / static_cast<float>(current_max_distance)) * MAX_INDIVIDUAL_VOLUME);
+                        // const uint8_t volume = sensor_index == 0? 30 : 0;
                         const auto tone = volume >= MAX_INDIVIDUAL_VOLUME_THRESHOLD
                             ? musical_note_tone::create_invalid()
                             : SENSOR_TONES[sensor_index][0];
@@ -117,20 +117,20 @@ void dac_write_task(void* task_param_pointer)
 
         const auto [app_state] = *static_cast<dac_write_task_param*>(task_param_pointer);
 
-        if (app_state->dac_ctrl == nullptr)
-            throw std::invalid_argument("No dac controller was provided to dac_write_task.");
+        if (app_state->signal_gtor == nullptr)
+            throw std::invalid_argument("No signal generator was provided to dac_write_task.");
 
-        auto& dac_controller = *app_state->dac_ctrl;
+        auto& signal_generator = *app_state->signal_gtor;
 
-        //Start dac_controller inner task
-        if (const auto start_result = dac_controller.start();
-            start_result == dac_controller_start_result::ERR)
+        //Start signal_generator inner task
+        if (const auto start_result = signal_generator.start();
+            start_result == signal_generator_start_result::ERR)
         {
-            FLOGE("{} Failed to start inner tasks.", dac_controller::LOG_KEY);
+            FLOGE("{} Failed to start inner tasks.", signal_generator::LOG_KEY);
         }
         else
         {
-            FLOGI("{} Inner tasks are started.", dac_controller::LOG_KEY);
+            FLOGI("{} Inner tasks are started.", signal_generator::LOG_KEY);
         }
 
         // constexpr auto CHORDS_LEN = 3;
@@ -179,8 +179,9 @@ void dac_write_task(void* task_param_pointer)
 
         //Collect the current tones corresponding to each sensor,
         //and send them to the DAC controller
-        fixed_vec<musical_note_tone_volume, dac_controller::TONE_DATA_CAPACITY> tone_data {};
-        fixed_vec<musical_note_tone_volume, dac_controller::TONE_DATA_CAPACITY> tone_data_prev {};
+
+        fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data {};
+        fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data_prev {};
 
         do
         {
@@ -198,20 +199,20 @@ void dac_write_task(void* task_param_pointer)
                 //Only write to DAC ctrl if data changed
                 if (!tone_data.sequence_equals(tone_data_prev))
                 {
-                    FLOGD("Tone data changed -> [{}]", tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
+                    FLOGV("Tone data changed -> [{}]", tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
 
                     tone_data_prev.clone_from(tone_data); //Overwrite previous with current data for comparison next iteration
-                    dac_controller.write(tone_data);
+                    signal_generator.update_tones(&tone_data_prev);
                 }
                 else
                 {
-                    FVERBOSE("{} Tone data is unchanged during DAC write task.", dac_controller::LOG_KEY);
+                    FVERBOSE("{} Tone data is unchanged during DAC write task.", signal_generator::LOG_KEY);
                 }
             }
             catch (std::exception& e)
             {
                 FLOGE("{} An exception occurred during DAC write task: {}",
-                    dac_controller::LOG_KEY,
+                    signal_generator::LOG_KEY,
                     e.what());
             }
 

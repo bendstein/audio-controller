@@ -11,7 +11,8 @@ app_state do_setup()
 {
     auto setup = app_state {
         .i2c_buses = {},
-        .dac_ctrl = nullptr,
+        // .dac_ctrl = nullptr,
+        .signal_gtor = nullptr,
         .dac_write_task = nullptr,
         .distance_sensors = {},
         .sensor_tasks = {},
@@ -24,7 +25,8 @@ app_state do_setup()
 
     init_i2c_buses(&setup);
     init_distance_sensors(&setup);
-    init_dac_controller(&setup);
+    // init_dac_controller(&setup);
+    init_signal_generator(&setup);
 
     return setup;
 }
@@ -176,18 +178,78 @@ void init_distance_sensors(app_state* setup)
         throw std::runtime_error("Failed to setup distance sensor tasks. All buses are empty of distance sensors.");
 }
 
-void init_dac_controller(app_state* setup)
+// void init_dac_controller(app_state* setup)
+// {
+//     bool setup_successful = true;
+//
+//     try
+//     {
+//         if (auto maybe_dac_controller = dac_controller::try_create();
+//             maybe_dac_controller != nullptr)
+//         {
+//             setup->dac_ctrl.swap(maybe_dac_controller);
+//
+//             FLOGI("{} Created DAC controller.", dac_controller::LOG_KEY);
+//
+//             BaseType_t create_task_result;
+//
+//             if (try_create_dac_write_task(
+//                 "<DAC-WRITE>",
+//                 &create_task_result,
+//                 setup
+//             ))
+//             {
+//                 FLOGI("{} Started task 0x{:08X} for DAC write.",
+//                     dac_controller::LOG_KEY,
+//                     reinterpret_cast<uintptr_t>(*setup->dac_write_task));
+//             }
+//             else
+//             {
+//                 setup_successful = false;
+//                 FLOGE("{} Failed to start task for DAC write. ({})",
+//                     dac_controller::LOG_KEY,
+//                     create_task_result);
+//             }
+//         }
+//         else
+//         {
+//             setup_successful = false;
+//             FLOGE("{} Failed to create DAC controller.", dac_controller::LOG_KEY);
+//         }
+//     }
+//     catch (const std::exception& e)
+//     {
+//         setup_successful = false;
+//         FLOGE("{} An exception occurred while attempting to create DAC controller: {}", dac_controller::LOG_KEY, e.what());
+//     }
+//
+//     if (!setup_successful)
+//     {
+//         //Clear dac/task if unsuccessful
+//         // if (setup->dac_write_task != nullptr)
+//         // {
+//         //     if (const auto created_task = *setup->dac_write_task; created_task != nullptr)
+//         //         vTaskDelete(created_task);
+//         //
+//         //     setup->dac_write_task = nullptr;
+//         // }
+//
+//         setup->dac_ctrl = nullptr;
+//     }
+// }
+
+void init_signal_generator(app_state* setup)
 {
     bool setup_successful = true;
 
     try
     {
-        if (auto maybe_dac_controller = dac_controller::try_create();
-            maybe_dac_controller != nullptr)
+        if (auto maybe_signal_generator = signal_generator::try_create();
+            maybe_signal_generator != nullptr)
         {
-            setup->dac_ctrl.swap(maybe_dac_controller);
+            setup->signal_gtor.swap(maybe_signal_generator);
 
-            FLOGI("{} Created DAC controller.", dac_controller::LOG_KEY);
+            FLOGI("{} Created signal generator.", signal_generator::LOG_KEY);
 
             BaseType_t create_task_result;
 
@@ -198,27 +260,27 @@ void init_dac_controller(app_state* setup)
             ))
             {
                 FLOGI("{} Started task 0x{:08X} for DAC write.",
-                    dac_controller::LOG_KEY,
+                    signal_generator::LOG_KEY,
                     reinterpret_cast<uintptr_t>(*setup->dac_write_task));
             }
             else
             {
                 setup_successful = false;
                 FLOGE("{} Failed to start task for DAC write. ({})",
-                    dac_controller::LOG_KEY,
+                    signal_generator::LOG_KEY,
                     create_task_result);
             }
         }
         else
         {
             setup_successful = false;
-            FLOGE("{} Failed to create DAC controller.", dac_controller::LOG_KEY);
+            FLOGE("{} Failed to create signal generator.", signal_generator::LOG_KEY);
         }
     }
     catch (const std::exception& e)
     {
         setup_successful = false;
-        FLOGE("{} An exception occurred while attempting to create DAC controller: {}", dac_controller::LOG_KEY, e.what());
+        FLOGE("{} An exception occurred while attempting to create signal generator: {}", signal_generator::LOG_KEY, e.what());
     }
 
     if (!setup_successful)
@@ -232,7 +294,7 @@ void init_dac_controller(app_state* setup)
         //     setup->dac_write_task = nullptr;
         // }
 
-        setup->dac_ctrl = nullptr;
+        setup->signal_gtor = nullptr;
     }
 }
 
@@ -294,7 +356,7 @@ bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_
     {
         FLOGI("Creating task {}.", task_name);
 
-        if (setup->dac_ctrl != nullptr)
+        if (setup->signal_gtor != nullptr)
         {
             auto task_param = dac_write_task_param {
                 .state = setup
@@ -323,7 +385,7 @@ bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_
             if (*result_code != pdPASS)
             {
                 FLOGE("{} Failed to create task {}. Code: 0x{:04X}.",
-                    dac_controller::LOG_KEY,
+                    signal_generator::LOG_KEY,
                     task_name,
                     static_cast<int>(*result_code));
             }
@@ -339,7 +401,7 @@ bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_
     catch (std::exception& e)
     {
         FLOGE("{} An exception occurred while configuring write task for DAC: {}",
-            dac_controller::LOG_KEY,
+            signal_generator::LOG_KEY,
             e.what());
 
         *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument

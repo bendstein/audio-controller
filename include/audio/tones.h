@@ -61,10 +61,20 @@ struct musical_note_tone
 
         const auto note_number = static_cast<uint8_t>(note);
 
-        if (note_number < 0 || note_number >= musical_note_data::ALL_SINE_TABLES_LENGTH_0)
+        if (note_number >= musical_note_data::ALL_SINE_TABLES_LENGTH_0)
             return std::numeric_limits<size_t>::max();
 
         return note_number * musical_note_data::ALL_SINE_TABLES_LENGTH_1 + (octave - musical_note_data::MIN_OCTAVE);
+    }
+    [[nodiscard]] uint32_t get_period(const uint32_t sample_rate) const
+    {
+        if (is_zero_or_invalid())
+            return 0;
+
+        return static_cast<uint32_t>(std::clamp(
+            sample_rate / static_cast<double>(frequency_hz()),
+            0.,
+            static_cast<double>(std::numeric_limits<uint32_t>::max())));
     }
 
     bool operator==(const musical_note_tone& other) const { return check_frequency_equivalency(frequency_hz(), other.frequency_hz()); }
