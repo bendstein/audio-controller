@@ -13,13 +13,13 @@ static constexpr auto DAC_WRITE_TASK_STACK_SIZE = 0x1000;
 
 struct bus_sensor_task_param
 {
-    app_state_standard* state;
+    app_state* state;
     size_t index;
 };
 
 struct dac_write_task_param
 {
-    app_state_signal_generator* state;
+    app_state* state;
 };
 
 [[noreturn]]

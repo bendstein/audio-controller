@@ -26,45 +26,31 @@ constexpr float SENSOR_TONES_BREAKPOINTS[SENSOR_TONES_LEN] = {
     1
 };
 
-struct app_state_standard
+struct app_state
 {
     std::unique_ptr<i2c_master> i2c_buses[BUS_COUNT];
     fixed_vec<std::unique_ptr<gp2y0e02b::distance_sensor>, SENSORS_COUNT> distance_sensors[BUS_COUNT];
-    std::unique_ptr<TaskHandle_t> sensor_tasks[BUS_COUNT];
-    musical_note_tone_volume current_tones[SENSORS_COUNT];
-    uint8_t current_distances[SENSORS_COUNT];
-};
-
-struct app_state_configure_gp2y0e02b
-{
-
-};
-
-struct app_state_signal_generator
-{
     std::unique_ptr<signal_generator> signal_gtor;
+    std::unique_ptr<TaskHandle_t> sensor_tasks[BUS_COUNT];
     std::unique_ptr<TaskHandle_t> dac_write_task;
     musical_note_tone_volume current_tones[SENSORS_COUNT];
+    uint8_t current_distances[SENSORS_COUNT];
 };
 
 enum struct main_method_type
 {
     standard,
-    configure_gp2y0e02b,
-    signal_generator
+    configure_gp2y0e02b
 };
 
 constexpr const char* main_method_type_names[] = {
     NAMEOF(main_method_type::standard),
-    NAMEOF(main_method_type::configure_gp2y0e02b),
-    NAMEOF(main_method_type::signal_generator)
+    NAMEOF(main_method_type::configure_gp2y0e02b)
 };
 
 //Which mode the application is running in
 #ifdef MAIN_METHOD_TYPE_CFG_GP2Y0E02B
 constexpr auto MAIN_METHOD_TYPE = main_method_type::configure_gp2y0e02b;
-#elifdef MAIN_METHOD_TYPE_SIGNAL_GENERATOR
-constexpr auto MAIN_METHOD_TYPE = main_method_type::signal_generator;
 #else
 constexpr auto MAIN_METHOD_TYPE = main_method_type::standard;
 #endif
