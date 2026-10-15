@@ -42,17 +42,21 @@ struct app_state
 enum struct main_method_type
 {
     standard,
-    configure_gp2y0e02b
+    configure_gp2y0e02b,
+    signal_generator
 };
 
 constexpr const char* main_method_type_names[] = {
     NAMEOF(main_method_type::standard),
-    NAMEOF(main_method_type::configure_gp2y0e02b)
+    NAMEOF(main_method_type::configure_gp2y0e02b),
+    NAMEOF(main_method_type::signal_generator)
 };
 
 //Which mode the application is running in
-#ifdef CFG_GP2Y0E02B_I2C_ADDR
+#ifdef MAIN_METHOD_TYPE_CFG_GP2Y0E02B
 constexpr auto MAIN_METHOD_TYPE = main_method_type::configure_gp2y0e02b;
+#elifdef MAIN_METHOD_TYPE_SIGNAL_GENERATOR
+constexpr auto MAIN_METHOD_TYPE = main_method_type::signal_generator;
 #else
 constexpr auto MAIN_METHOD_TYPE = main_method_type::standard;
 #endif

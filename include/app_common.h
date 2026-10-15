@@ -82,7 +82,7 @@ uint8_t get_max_set_bit(TNumber value)
     return count;
 }
 
-inline long long total_microseconds(const timeval* time)
+inline int64_t total_microseconds(const timeval* time)
 {
     return time->tv_usec
         + time->tv_sec * US_PER_SECOND;

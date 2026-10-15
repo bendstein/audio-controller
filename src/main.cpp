@@ -72,6 +72,10 @@ void app_main()
         {
             main_configure_gp2y0e02b();
         }
+        else if constexpr (MAIN_METHOD_TYPE == main_method_type::signal_generator)
+        {
+            main_signal_generator();
+        }
         else
         {
             main_standard();
@@ -119,6 +123,23 @@ void main_configure_gp2y0e02b()
         // gpio_set_direction(gp2y0e02b::distance_sensor::PIN_VPP_ENABLE, GPIO_MODE_OUTPUT);
         //
         // gp2y0e02b::distance_sensor::permanently_apply_new_i2c_address(bus, CFG_GP2Y0E02B_I2C_ADDR);
+    }
+    catch (const std::exception& e)
+    {
+        LOGEX(e);
+    }
+
+    while (true)
+    {
+        vTaskDelay(portMAX_DELAY);
+    } //Make sure to never return
+}
+
+void main_signal_generator()
+{
+    try
+    {
+        //TODO
     }
     catch (const std::exception& e)
     {

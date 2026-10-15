@@ -19,6 +19,9 @@ void main_standard();
 [[noreturn]]
 void main_configure_gp2y0e02b();
 
+[[noreturn]]
+void main_signal_generator();
+
 extern "C" {
     [[noreturn]]
     void app_main(void);
