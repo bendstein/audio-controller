@@ -4,8 +4,6 @@
 
 #ifndef AUDIO_CONTROLLER_MAIN_H
 #define AUDIO_CONTROLLER_MAIN_H
-#include <format>
-
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 

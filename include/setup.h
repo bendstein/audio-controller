@@ -23,15 +23,13 @@ static constexpr setup_cfg_dev SENSOR_CFG[SENSORS_COUNT] = {
     { .address = gp2y0e02b::distance_sensor::I2C_ADDR_DFT, .bus_num = 1 }
 };
 
-// static constexpr setup_cfg_dev DAC_CFG = { .address = mcp4725::dac::I2C_ADDR_DFT, .bus_num = 0 };
+[[nodiscard]] app_state_standard start_standard();
+[[nodiscard]] app_state_signal_generator start_signal_generator();
 
-[[nodiscard]] app_state do_setup();
-
-void init_i2c_buses(app_state* app_state);
-void init_distance_sensors(app_state* setup);
-// void init_dac_controller(app_state* setup);
-void init_signal_generator(app_state* setup);
-bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, size_t bus_ndx, app_state* setup);
-bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_code, app_state* setup);
+void init_i2c_buses(app_state_standard* app_state);
+void init_distance_sensors(app_state_standard* app_state);
+void init_signal_generator(app_state_signal_generator* app_state);
+bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, size_t bus_ndx, app_state_standard* app_state);
+bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_code, app_state_signal_generator* app_state);
 
 #endif //AUDIO_CONTROLLER_SETUP_H

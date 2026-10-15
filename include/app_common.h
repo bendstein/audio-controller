@@ -15,6 +15,7 @@
 #define LOG_LOCAL_LEVEL LOG_LEVEL_DEBUG
 #include <string>
 #include <ctime>
+#include <format>
 
 #include <esp_log.h>
 #include <driver/gpio.h>
@@ -34,13 +35,13 @@ constexpr uint8_t HIGH = 1;
 #define portTICK_PERIOD_US ((TickType_t)US_PER_MS / portTICK_PERIOD_MS)
 
 //Change parameter into HIGH or LOW for digital write
-#define DIGITAL(boolean_value) (boolean_value ? HIGH : LOW)
+#define DIGITAL(boolean_value) ((boolean_value) ? HIGH : LOW)
 
 //Change HIGH/LOW to bool
-#define DIGITAL_BOOL(int_value) (int_value != LOW)
+#define DIGITAL_BOOL(int_value) ((int_value) != LOW)
 
 //Change HIGH/LOW to LOW/HIGH
-#define INVERT_DIGITAL(int_value) (int_value == LOW? HIGH : LOW)
+#define INVERT_DIGITAL(int_value) ((int_value) == LOW? HIGH : LOW)
 
 //Macro parameter as raw string
 #define NAMEOF(var) #var
@@ -205,7 +206,7 @@ inline void loge(const std::string& tag, const std::string& message)
 #if LOG_LOCAL_LEVEL >= LOG_LEVEL_ERROR
 
 #define LOGE(message) do { loge(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, message)); } while(false)
-#define LOGEX(ex) do { loge(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, ex.what())); } while(false)
+#define LOGEX(ex) do { loge(__FILE_NAME__, std::format("({}:{}) {}", __func__, __LINE__, (ex).what())); } while(false)
 
 #else
 

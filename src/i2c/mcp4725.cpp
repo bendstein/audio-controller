@@ -1,8 +1,6 @@
 //
 // Created by bendstein on 12/28/2025.
 //
-#include <format>
-
 #include "app_common.h"
 #include "i2c/i2c.h"
 #include "i2c/mcp4725.h"

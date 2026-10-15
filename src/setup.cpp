@@ -6,31 +6,52 @@
 #include "i2c/i2c.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
-app_state do_setup()
+app_state_standard start_standard()
 {
-    auto setup = app_state {
+    LOGI("Starting (Standard).");
+    LOGI("Performing Setup...");
+
+    auto app_state = app_state_standard {
         .i2c_buses = {},
-        // .dac_ctrl = nullptr,
-        .signal_gtor = nullptr,
-        .dac_write_task = nullptr,
         .distance_sensors = {},
         .sensor_tasks = {},
         .current_tones = {},
         .current_distances = {}
     };
 
-    for (auto& current_tone : setup.current_tones)
+    for (auto& current_tone : app_state.current_tones)
         current_tone = musical_note_tone_volume::create_invalid();
 
-    init_i2c_buses(&setup);
-    init_distance_sensors(&setup);
-    // init_dac_controller(&setup);
-    init_signal_generator(&setup);
+    init_i2c_buses(&app_state);
+    init_distance_sensors(&app_state);
 
-    return setup;
+    LOGI("Finished Setup.");
+
+    return app_state;
 }
 
-void init_i2c_buses(app_state* app_state)
+app_state_signal_generator start_signal_generator()
+{
+    LOGI("Starting (Signal Generator).");
+    LOGI("Performing Setup...");
+
+    auto app_state = app_state_signal_generator {
+        .signal_gtor = nullptr,
+        .dac_write_task = nullptr,
+        .current_tones = {}
+    };
+
+    for (auto& current_tone : app_state.current_tones)
+        current_tone = musical_note_tone_volume::create_invalid();
+
+    init_signal_generator(&app_state);
+
+    LOGI("Finished Setup.");
+
+    return app_state;
+}
+
+void init_i2c_buses(app_state_standard* app_state)
 {
     for (auto i = 0; i < BUS_COUNT; i++)
     {
@@ -58,7 +79,7 @@ void init_i2c_buses(app_state* app_state)
     }
 }
 
-void init_distance_sensors(app_state* setup)
+void init_distance_sensors(app_state_standard* app_state)
 {
     //Init each distance sensor
     for (auto i = 0; i < SENSORS_COUNT; i++)
@@ -66,10 +87,10 @@ void init_distance_sensors(app_state* setup)
         bool setup_successful = true;
         const auto [ addr, bus_num ] = SENSOR_CFG[i];
 
-        auto& sensors = setup->distance_sensors[bus_num];
+        auto& sensors = app_state->distance_sensors[bus_num];
         const auto sensor_index = sensors.grow();
 
-        if (bus_num >= BUS_COUNT || setup->i2c_buses[bus_num] == nullptr)
+        if (bus_num >= BUS_COUNT || app_state->i2c_buses[bus_num] == nullptr)
         {
             FLOGE("[distance sensor 0x{:02X}] Cannot create distance sensor #{}, as bus {} doesn't exist.", addr, i, bus_num);
             continue;
@@ -79,7 +100,7 @@ void init_distance_sensors(app_state* setup)
         {
             //Try to create each sensor, apply configuration, and start respective task
             if (auto maybe_sensor = gp2y0e02b::distance_sensor::try_create_on_bus(
-                setup->i2c_buses[bus_num]->get_handle(),
+                app_state->i2c_buses[bus_num]->get_handle(),
                 addr,
                 i,
                 gp2y0e02b::distance_sensor::TIMEOUT_MS_DFT
@@ -100,7 +121,8 @@ void init_distance_sensors(app_state* setup)
 
                 //Perform soft reset of sensor to make sure
                 //all settings are at initial default
-                if (setup_successful && !sensors[sensor_index]->try_soft_reset())
+                // if (setup_successful && !sensors[sensor_index]->try_soft_reset())
+                if (!sensors[sensor_index]->try_soft_reset())
                 {
                     setup_successful = false;
                     FLOGE("{} Failed to perform software reset.", sensors[sensor_index]->get_log_key());
@@ -149,7 +171,7 @@ void init_distance_sensors(app_state* setup)
     {
         FLOGI("Creating distance sensor task for I2C bus {}.", i);
 
-        if (setup->distance_sensors[i].empty())
+        if (app_state->distance_sensors[i].empty())
         {
             FLOGW("I2C bus {} has no distance sensors.", i);
             continue;
@@ -158,11 +180,11 @@ void init_distance_sensors(app_state* setup)
         all_empty = false;
 
         BaseType_t create_task_result;
-        if (const auto init_task_success = try_create_distance_sensor_task(std::format("<i2c-bus-0x{:02X}>", i), &create_task_result, i, setup);
+        if (const auto init_task_success = try_create_distance_sensor_task(std::format("<i2c-bus-0x{:02X}>", i), &create_task_result, i, app_state);
             init_task_success)
         {
             FLOGI("Successfully created distance sensor task 0x{:08X} for I2C bus {}: 0x{:04X}",
-                reinterpret_cast<uintptr_t>(*setup->sensor_tasks[i]),
+                reinterpret_cast<uintptr_t>(*app_state->sensor_tasks[i]),
                 i,
                 create_task_result);
         }
@@ -177,67 +199,7 @@ void init_distance_sensors(app_state* setup)
         throw std::runtime_error("Failed to setup distance sensor tasks. All buses are empty of distance sensors.");
 }
 
-// void init_dac_controller(app_state* setup)
-// {
-//     bool setup_successful = true;
-//
-//     try
-//     {
-//         if (auto maybe_dac_controller = dac_controller::try_create();
-//             maybe_dac_controller != nullptr)
-//         {
-//             setup->dac_ctrl.swap(maybe_dac_controller);
-//
-//             FLOGI("{} Created DAC controller.", dac_controller::LOG_KEY);
-//
-//             BaseType_t create_task_result;
-//
-//             if (try_create_dac_write_task(
-//                 "<DAC-WRITE>",
-//                 &create_task_result,
-//                 setup
-//             ))
-//             {
-//                 FLOGI("{} Started task 0x{:08X} for DAC write.",
-//                     dac_controller::LOG_KEY,
-//                     reinterpret_cast<uintptr_t>(*setup->dac_write_task));
-//             }
-//             else
-//             {
-//                 setup_successful = false;
-//                 FLOGE("{} Failed to start task for DAC write. ({})",
-//                     dac_controller::LOG_KEY,
-//                     create_task_result);
-//             }
-//         }
-//         else
-//         {
-//             setup_successful = false;
-//             FLOGE("{} Failed to create DAC controller.", dac_controller::LOG_KEY);
-//         }
-//     }
-//     catch (const std::exception& e)
-//     {
-//         setup_successful = false;
-//         FLOGE("{} An exception occurred while attempting to create DAC controller: {}", dac_controller::LOG_KEY, e.what());
-//     }
-//
-//     if (!setup_successful)
-//     {
-//         //Clear dac/task if unsuccessful
-//         // if (setup->dac_write_task != nullptr)
-//         // {
-//         //     if (const auto created_task = *setup->dac_write_task; created_task != nullptr)
-//         //         vTaskDelete(created_task);
-//         //
-//         //     setup->dac_write_task = nullptr;
-//         // }
-//
-//         setup->dac_ctrl = nullptr;
-//     }
-// }
-
-void init_signal_generator(app_state* setup)
+void init_signal_generator(app_state_signal_generator* app_state)
 {
     bool setup_successful = true;
 
@@ -246,7 +208,7 @@ void init_signal_generator(app_state* setup)
         if (auto maybe_signal_generator = signal_generator::try_create();
             maybe_signal_generator != nullptr)
         {
-            setup->signal_gtor.swap(maybe_signal_generator);
+            app_state->signal_gtor.swap(maybe_signal_generator);
 
             FLOGI("{} Created signal generator.", signal_generator::LOG_KEY);
 
@@ -255,12 +217,12 @@ void init_signal_generator(app_state* setup)
             if (try_create_dac_write_task(
                 "<DAC-WRITE>",
                 &create_task_result,
-                setup
+                app_state
             ))
             {
                 FLOGI("{} Started task 0x{:08X} for DAC write.",
                     signal_generator::LOG_KEY,
-                    reinterpret_cast<uintptr_t>(*setup->dac_write_task));
+                    reinterpret_cast<uintptr_t>(*app_state->dac_write_task));
             }
             else
             {
@@ -293,20 +255,20 @@ void init_signal_generator(app_state* setup)
         //     setup->dac_write_task = nullptr;
         // }
 
-        setup->signal_gtor = nullptr;
+        app_state->signal_gtor = nullptr;
     }
 }
 
-bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, const size_t bus_ndx, app_state* setup)
+bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, const size_t bus_ndx, app_state_standard* app_state)
 {
     try
     {
         FLOGI("Creating task {}.", task_name);
 
-        if (!setup->distance_sensors[bus_ndx].empty())
+        if (!app_state->distance_sensors[bus_ndx].empty())
         {
             auto task_param = bus_sensor_task_param {
-                .state = setup,
+                .state = app_state,
                 .index = bus_ndx
             };
 
@@ -321,7 +283,7 @@ bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* r
                 &task_handle
             );
 
-            setup->sensor_tasks[bus_ndx] = std::make_unique<TaskHandle_t>(task_handle);
+            app_state->sensor_tasks[bus_ndx] = std::make_unique<TaskHandle_t>(task_handle);
 
             if (*result_code != pdPASS)
             {
@@ -349,16 +311,16 @@ bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* r
     }
 }
 
-bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_code, app_state* setup)
+bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_code, app_state_signal_generator* app_state)
 {
     try
     {
         FLOGI("Creating task {}.", task_name);
 
-        if (setup->signal_gtor != nullptr)
+        if (app_state->signal_gtor != nullptr)
         {
             auto task_param = dac_write_task_param {
-                .state = setup
+                .state = app_state
             };
 
             TaskHandle_t task_handle;
@@ -374,7 +336,7 @@ bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_
                 &task_handle
             );
 
-            setup->dac_write_task = std::make_unique<TaskHandle_t>(task_handle);
+            app_state->dac_write_task = std::make_unique<TaskHandle_t>(task_handle);
 
             FLOGD("Result of xTaskCreate for task {} | Code: 0x{:04X}, Handle: 0x{:08X}",
                 task_name,

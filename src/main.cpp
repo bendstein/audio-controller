@@ -22,86 +22,31 @@ void app_main()
     LOGW("Log level W enabled.");
     LOGE("Log level E enabled.");
 
-    try
+    //Call correct main method
+    if constexpr (MAIN_METHOD_TYPE == main_method_type::configure_gp2y0e02b)
     {
-        // TaskHandle_t log_tasks_task = nullptr;
-
-        // if constexpr (FLAG_VERBOSE)
-        // {
-        //     VERBOSE("Creating log_tasks_task.");
-        //
-        //     if (const auto create_log_tasks_task_result = xTaskCreate(log_system_state_task, "<LOG_SYS_STATE>",
-        //         4096,  nullptr, 1, &log_tasks_task); create_log_tasks_task_result != pdPASS)
-        //     {
-        //         FLOGE("Failed to create log_tasks_task. (0x{:04X})", create_log_tasks_task_result);
-        //     }
-        //
-        //     VERBOSE("Successfully created log_tasks_task.");
-        // }
-
-        // const auto sgn = signal_generator::try_create();
-        // sgn->start();
-        //
-        // signal_generator::tone_vec_t tone_data {};
-        //
-        // tone_data.add_to_end({
-        //     .tone = {
-        //         .note = musical_note::A,
-        //         .octave = 4
-        //     },
-        //     .volume = 40
-        // });
-        //
-        // tone_data.add_to_end({
-        //     .tone = {
-        //         .note = musical_note::C,
-        //         .octave = 4
-        //     },
-        //     .volume = 40
-        // });
-        //
-        // sgn->update_tones(&tone_data);
-        //
-        // while (true)
-        // {
-        //     vTaskDelay(portMAX_DELAY);
-        // } //Make sure to never return
-
-        //Call correct main method
-        if constexpr (MAIN_METHOD_TYPE == main_method_type::configure_gp2y0e02b)
-        {
-            main_configure_gp2y0e02b();
-        }
-        else if constexpr (MAIN_METHOD_TYPE == main_method_type::signal_generator)
-        {
-            main_signal_generator();
-        }
-        else
-        {
-            main_standard();
-        }
+        main_configure_gp2y0e02b();
     }
-    catch (const std::exception& e)
+    else if constexpr (MAIN_METHOD_TYPE == main_method_type::signal_generator)
     {
-        LOGEX(e);
+        main_signal_generator();
     }
-
-    while (true)
+    else
     {
-        vTaskDelay(portMAX_DELAY);
-    } //Make sure to never return
+        main_standard();
+    }
 }
 
 void main_standard()
 {
     try
     {
-        const auto state = do_setup();
+        const auto state = start_standard();
 
-        for (uint32_t i = 0; ; i = (i + 1) % std::numeric_limits<uint32_t>::max())
+        while (true)
         {
-            vTaskDelay(250 / portTICK_PERIOD_MS);
-        }
+            vTaskDelay(portMAX_DELAY);
+        } //Make sure to never return
     }
     catch (const std::exception& e)
     {
@@ -118,11 +63,18 @@ void main_configure_gp2y0e02b()
 {
     try
     {
+        //TODO
+
         // const auto bus = i2c_init_bus();
         // gpio_reset_pin(gp2y0e02b::distance_sensor::PIN_VPP_ENABLE);
         // gpio_set_direction(gp2y0e02b::distance_sensor::PIN_VPP_ENABLE, GPIO_MODE_OUTPUT);
         //
         // gp2y0e02b::distance_sensor::permanently_apply_new_i2c_address(bus, CFG_GP2Y0E02B_I2C_ADDR);
+
+        while (true)
+        {
+            vTaskDelay(portMAX_DELAY);
+        } //Make sure to never return
     }
     catch (const std::exception& e)
     {
@@ -139,7 +91,12 @@ void main_signal_generator()
 {
     try
     {
-        //TODO
+        const auto state = start_signal_generator();
+
+        while (true)
+        {
+            vTaskDelay(portMAX_DELAY);
+        } //Make sure to never return
     }
     catch (const std::exception& e)
     {

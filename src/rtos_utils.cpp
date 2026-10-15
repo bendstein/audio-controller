@@ -1,7 +1,6 @@
 //
 // Created by bendstein on 10/15/2026.
 //
-#include <format>
 #include <memory>
 
 #include "app_common.h"

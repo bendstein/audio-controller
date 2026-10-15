@@ -6,7 +6,6 @@
 #define AUDIO_CONTROLLER_APP_STATE_H
 
 #include "fixed_vec.h"
-#include "audio/dac_controller.h"
 #include "audio/signal_generator.h"
 #include "i2c/i2c.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
@@ -27,16 +26,25 @@ constexpr float SENSOR_TONES_BREAKPOINTS[SENSOR_TONES_LEN] = {
     1
 };
 
-struct app_state
+struct app_state_standard
 {
     std::unique_ptr<i2c_master> i2c_buses[BUS_COUNT];
-    // std::unique_ptr<dac_controller> dac_ctrl;
-    std::unique_ptr<signal_generator> signal_gtor;
-    std::unique_ptr<TaskHandle_t> dac_write_task;
     fixed_vec<std::unique_ptr<gp2y0e02b::distance_sensor>, SENSORS_COUNT> distance_sensors[BUS_COUNT];
     std::unique_ptr<TaskHandle_t> sensor_tasks[BUS_COUNT];
     musical_note_tone_volume current_tones[SENSORS_COUNT];
     uint8_t current_distances[SENSORS_COUNT];
+};
+
+struct app_state_configure_gp2y0e02b
+{
+
+};
+
+struct app_state_signal_generator
+{
+    std::unique_ptr<signal_generator> signal_gtor;
+    std::unique_ptr<TaskHandle_t> dac_write_task;
+    musical_note_tone_volume current_tones[SENSORS_COUNT];
 };
 
 enum struct main_method_type

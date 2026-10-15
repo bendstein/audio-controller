@@ -1,9 +1,6 @@
 //
 // Created by bendstein on 10/15/2026.
 //
-#include <format>
-#include <string>
-
 #include "app_common.h"
 #include "audio/signal_generator.h"
 
