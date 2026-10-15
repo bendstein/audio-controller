@@ -4,6 +4,7 @@
 
 #ifndef AUDIO_CONTROLLER_MUSICAL_NOTE_H
 #define AUDIO_CONTROLLER_MUSICAL_NOTE_H
+#include <cstdint>
 
 /**
  * Enum of all notes in the chromatic scale

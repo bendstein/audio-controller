@@ -4,7 +4,6 @@
 
 #ifndef AUDIO_CONTROLLER_SETUP_H
 #define AUDIO_CONTROLLER_SETUP_H
-
 #include "app_state.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 

@@ -1,8 +1,8 @@
+#include "driver/gpio.h"
+
 #include "main.h"
-#include "i2c/gp2y0e02b/distance_sensor.h"
 #include "setup.h"
 #include "audio/signal_generator.h"
-#include "driver/gpio.h"
 
 [[noreturn]]
 void app_main()

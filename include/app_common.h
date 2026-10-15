@@ -13,15 +13,11 @@
 #define LOG_LEVEL_VERBOSE   5
 
 #define LOG_LOCAL_LEVEL LOG_LEVEL_DEBUG
-
-#include <esp_log.h>
 #include <string>
 #include <ctime>
-#include "driver/gpio.h"
-#include <freertos/FreeRTOS.h>
-#include <freertos/FreeRTOSConfig.h>
-#include <freertos/task.h>
-#include <sys/_timeval.h>
+
+#include <esp_log.h>
+#include <driver/gpio.h>
 
 //Whether the application should perform additional debugging/logging logic
 constexpr auto FLAG_VERBOSE = LOG_LOCAL_LEVEL >= LOG_LEVEL_VERBOSE;

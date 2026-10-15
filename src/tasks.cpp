@@ -3,7 +3,6 @@
 //
 
 #include <algorithm>
-
 #include <cmath>
 #include <memory>
 
@@ -11,7 +10,6 @@
 #include <freertos/FreeRTOSConfig.h>
 #include <freertos/task.h>
 
-#include "audio/dac_controller.h"
 #include "tasks.h"
 #include "app_common.h"
 

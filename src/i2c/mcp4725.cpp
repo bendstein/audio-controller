@@ -1,7 +1,58 @@
 //
 // Created by bendstein on 12/28/2025.
 //
+#include <format>
+
+#include "app_common.h"
+#include "i2c/i2c.h"
 #include "i2c/mcp4725.h"
+
+mcp4725::dac::dac(i2c_master_dev_handle_t device_handle, const uint8_t address) : handle(device_handle), address(address)
+{
+    log_key = make_log_key();
+}
+
+mcp4725::dac::dac(i2c_master_dev_handle_t device_handle, const uint8_t address, const int32_t timeout) : dac(device_handle, address)
+{
+    timeout_ms = timeout;
+    log_key = make_log_key();
+}
+
+mcp4725::dac::~dac()
+{
+    //Remove device from bus on destroy
+    if (handle != nullptr)
+    {
+        try
+        {
+            FLOGI("{} Removing device 0x{:08X} from bus.",
+                 log_key,
+                 reinterpret_cast<uintptr_t>(handle));
+
+            if (const auto rm_device_result = i2c_master_bus_rm_device(handle);
+                rm_device_result != ESP_OK)
+            {
+                FLOGE("{} Failed to remove device 0x{:08X} from bus. [0x{:04X}] {}",
+                    log_key,
+                    reinterpret_cast<uintptr_t>(handle),
+                    rm_device_result,
+                    esp_err_to_name(rm_device_result));
+            }
+        }
+        catch (std::exception& e)
+        {
+            FLOGE("{} An exception occurred while removing device 0x{:08X} from bus: {}",
+                log_key, reinterpret_cast<uintptr_t>(handle), e.what());
+        }
+    }
+}
+
+std::string mcp4725::dac::make_log_key() const
+{
+    return std::format("[DAC 0x{:02X}; 0x{:08X}]",
+        address,
+        reinterpret_cast<uintptr_t>(handle));
+}
 
 bool mcp4725::dac::ping() const
 {
@@ -105,4 +156,31 @@ bool mcp4725::dac::try_general_call(const general_call command) const
 
         return false;
     }
+}
+
+std::unique_ptr<mcp4725::dac> mcp4725::dac::try_create_on_bus(i2c_master_bus_handle_t bus, const uint8_t addr, const int32_t timeout_ms)
+{
+    FLOGI("[DAC 0x{:02X}] Creating device on bus.", addr);
+
+    const i2c_device_config_t device_cfg = {
+        .dev_addr_length = I2C_ADDR_BIT_LEN_7,
+        .device_address = addr,
+        .scl_speed_hz = I2C_FAST_HZ,
+        .scl_wait_us = I2C_SCL_WAIT_US_DFT,
+        .flags = {
+            .disable_ack_check = false
+        }
+    };
+
+    i2c_master_dev_handle_t handle;
+
+    if (const auto add_to_bus_result = i2c_master_bus_add_device(bus, &device_cfg, &handle); add_to_bus_result != ESP_OK)
+    {
+        FLOGE("[DAC 0x{:02X}] Failed to create device. [0x{:04X}] {}",
+            addr, add_to_bus_result, esp_err_to_name(add_to_bus_result));
+
+        return nullptr;
+    }
+
+    return std::make_unique<dac>(handle, addr, timeout_ms);
 }

@@ -5,8 +5,10 @@
 #ifndef AUDIO_CONTROLLER_MAIN_H
 #define AUDIO_CONTROLLER_MAIN_H
 #include <format>
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+
+#include <freertos/FreeRTOS.h>
+#include <freertos/task.h>
+
 #include "app_common.h"
 
 // #define CFG_GP2Y0E02B_I2C_ADDR (0x10)

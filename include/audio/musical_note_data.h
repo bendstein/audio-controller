@@ -5,8 +5,6 @@
 
 #ifndef AUDIO_CONTROLLER_MUSICAL_NOTE_DATA_H
 #define AUDIO_CONTROLLER_MUSICAL_NOTE_DATA_H
-#include <cmath>
-
 #include "sine_table.h"
 #include "musical_note.h"
 

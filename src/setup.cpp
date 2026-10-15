@@ -2,7 +2,6 @@
 // Created by bendstein on 12/27/2025.
 //
 #include "setup.h"
-
 #include "tasks.h"
 #include "i2c/i2c.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"

@@ -8,6 +8,7 @@
 #include "fixed_vec.h"
 #include "audio/dac_controller.h"
 #include "audio/signal_generator.h"
+#include "i2c/i2c.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
 constexpr size_t BUS_COUNT = 2;

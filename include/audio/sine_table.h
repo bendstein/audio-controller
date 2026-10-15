@@ -4,6 +4,8 @@
 
 #ifndef AUDIO_CONTROLLER_SINE_TABLE_H
 #define AUDIO_CONTROLLER_SINE_TABLE_H
+#include <cstdint>
+#include <cstddef>
 
 struct SineTable
 {
