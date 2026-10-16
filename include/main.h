@@ -4,10 +4,6 @@
 
 #ifndef AUDIO_CONTROLLER_MAIN_H
 #define AUDIO_CONTROLLER_MAIN_H
-#include <freertos/FreeRTOS.h>
-#include <freertos/task.h>
-
-#include "app_common.h"
 
 // #define CFG_GP2Y0E02B_I2C_ADDR (0x10)
 
@@ -23,32 +19,6 @@ extern "C" {
 }
 
 [[noreturn]]
-inline void log_system_state_task(void*)
-{
-    if constexpr (FLAG_VERBOSE)
-    {
-        static char list_tasks_buffer[1024] {};
-
-        do
-        {
-            try
-            {
-                vTaskDelay(5000 / portTICK_PERIOD_MS);
-
-                vTaskList(list_tasks_buffer);
-                VERBOSE_LB(list_tasks_buffer);
-            }
-            catch (std::exception &e)
-            {
-                LOGEX(e);
-            }
-        }
-        while (true);
-    }
-    else
-    {
-        do { vTaskDelay(portMAX_DELAY); } while (true);
-    }
-}
+void log_system_state_task(void*);
 
 #endif //AUDIO_CONTROLLER_MAIN_H

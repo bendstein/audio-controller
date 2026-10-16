@@ -162,7 +162,7 @@ void init_distance_sensors(app_state* state)
         all_empty = false;
 
         BaseType_t create_task_result;
-        if (const auto init_task_success = try_create_distance_sensor_task(std::format("<i2c-bus-0x{:02X}>", i), &create_task_result, i, state);
+        if (const auto init_task_success = try_create_distance_sensor_task(std::format("<I2C-BUS-0x{:02X}>", i), &create_task_result, i, state);
             init_task_success)
         {
             FLOGI("Successfully created distance sensor task 0x{:08X} for I2C bus {}: 0x{:04X}",
@@ -176,9 +176,9 @@ void init_distance_sensors(app_state* state)
         }
     }
 
-    //If every bus is empty, throw
+    //If every bus is empty, log error
     if (all_empty)
-        throw std::runtime_error("Failed to setup distance sensor tasks. All buses are empty of distance sensors.");
+        FLOGE("Failed to setup distance sensor tasks. All ({}) buses are empty of distance sensors.", BUS_COUNT);
 }
 
 void init_signal_generator(app_state* state)

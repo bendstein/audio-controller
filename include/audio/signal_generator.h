@@ -39,13 +39,13 @@ class signal_generator
 {
 public:
     static constexpr auto LOG_KEY = "[Signal Gen]";
-    static constexpr size_t TONE_DATA_CAPACITY = 8;
+    static constexpr size_t TONE_DATA_CAPACITY = 5;
 
     typedef fixed_vec<musical_note_tone_volume, TONE_DATA_CAPACITY> tone_vec_t;
     typedef fixed_vec<signal_generator_tone, TONE_DATA_CAPACITY> tone_period_vec_t;
 private:
-    static constexpr auto TASK_NAME = "<Signal Gen>";
-    static constexpr auto TASK_PRIORITY = 8;
+    static constexpr auto TASK_NAME = "<SIGNAL-GEN>";
+    static constexpr auto TASK_PRIORITY = 0;
     static constexpr auto TASK_STACK_SIZE = 0x1000;
 
     /**

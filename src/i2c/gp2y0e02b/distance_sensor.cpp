@@ -299,7 +299,7 @@ bool gp2y0e02b::distance_sensor::try_read_from_register(register_map_entry* entr
             return false;
 
         //Data hold/setup time
-        vTaskDelay(1 / portTICK_PERIOD_US);
+        vTaskDelay(1 / portTICK_PERIOD_MS);
 
         FVERBOSE("[{}] Send read request.", get_log_key());
 
@@ -368,7 +368,7 @@ bool gp2y0e02b::distance_sensor::try_burst_read_from_register(register_map_entry
             return false;
 
         //Data hold/setup time
-        vTaskDelay(1 / portTICK_PERIOD_US);
+        vTaskDelay(1 / portTICK_PERIOD_MS);
 
         //alloc read buffer that will be freed at end of scope
         const auto buffer_read = std::make_unique<uint8_t[]>(read_len);
@@ -424,7 +424,7 @@ bool gp2y0e02b::distance_sensor::try_write_to_register(const register_map_entry*
             return false;
 
         //Data hold/setup time
-        vTaskDelay(1 / portTICK_PERIOD_US);
+        vTaskDelay(1 / portTICK_PERIOD_MS);
 
         FVERBOSE("[{}] Send write request with data: 0x{:02X}", get_log_key(), entry->data.raw_value);
 
@@ -594,7 +594,7 @@ void gp2y0e02b::distance_sensor::permanently_apply_new_i2c_address(i2c_master_bu
     if (!sensor.try_write_to_register(&start_program_entry))
         throw std::runtime_error("Failed to enable/start e-fuse program");
 
-    vTaskDelay(500 / portTICK_PERIOD_US); //Delay 500 microseconds while writing program
+    vTaskDelay(1 / portTICK_PERIOD_MS); //Delay while writing program
 
     //Stage 6
 

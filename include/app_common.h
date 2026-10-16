@@ -31,9 +31,6 @@ constexpr auto PIN_LED_BUILTIN = GPIO_NUM_13;
 constexpr uint8_t LOW = 0;
 constexpr uint8_t HIGH = 1;
 
-//Doesn't need to be a macro, but I'm doing it to match portTICK_PERIOD_MS being a macro
-#define portTICK_PERIOD_US ((TickType_t)US_PER_MS / portTICK_PERIOD_MS)
-
 //Change parameter into HIGH or LOW for digital write
 #define DIGITAL(boolean_value) ((boolean_value) ? HIGH : LOW)
 

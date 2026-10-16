@@ -30,9 +30,10 @@ public:
         clone_from(other);
     }
 
-    explicit fixed_vec(const T (&data)[CAPACITY]) : length(CAPACITY), storage()
+    template<size_t CAPACITY_2> requires (CAPACITY_2 > 0 && CAPACITY_2 <= CAPACITY)
+    explicit fixed_vec(const T (&data)[CAPACITY_2]) : length(CAPACITY_2), storage()
     {
-        memcpy(storage, data, CAPACITY * sizeof(T));
+        memcpy(storage, data, CAPACITY_2 * sizeof(T));
     }
 
     ~fixed_vec() = default;
@@ -104,14 +105,14 @@ public:
     void clone_from(const fixed_vec& other) noexcept
     {
         length = other.length;
-        memcpy(storage, other.storage, sizeof(T) * CAPACITY);
+        memcpy(storage, other.storage, CAPACITY * sizeof(T));
     }
 
-    template<size_t CAPACITY2> requires (CAPACITY > 0 && CAPACITY2 < CAPACITY)
+    template<size_t CAPACITY2> requires (CAPACITY2 > 0 && CAPACITY2 < CAPACITY)
     void clone_from(const fixed_vec<T, CAPACITY2>& other) noexcept
     {
         length = other.size();
-        memcpy(storage, other.data(), sizeof(T) * CAPACITY2);
+        memcpy(storage, other.data(), CAPACITY2 * sizeof(T));
     }
 
     void clear()
