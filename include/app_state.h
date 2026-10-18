@@ -13,7 +13,8 @@
 constexpr size_t BUS_COUNT = 2;
 constexpr size_t SENSORS_COUNT = 2;
 constexpr size_t SENSOR_TONES_LEN = 1;
-constexpr uint8_t MAX_INDIVIDUAL_VOLUME = 0xCA;
+constexpr size_t MAX_VOICES = 5;
+constexpr uint8_t MAX_INDIVIDUAL_VOLUME = 250 / MAX_VOICES;
 constexpr uint8_t MAX_INDIVIDUAL_VOLUME_THRESHOLD = static_cast<uint8_t>(0.95 * MAX_INDIVIDUAL_VOLUME);
 
 constexpr musical_note_tone SENSOR_TONES[SENSORS_COUNT][SENSOR_TONES_LEN]

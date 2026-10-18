@@ -45,7 +45,7 @@ public:
     typedef fixed_vec<signal_generator_tone, TONE_DATA_CAPACITY> tone_period_vec_t;
 private:
     static constexpr auto TASK_NAME = "<SIGNAL-GEN>";
-    static constexpr auto TASK_PRIORITY = 0;
+    static constexpr auto TASK_PRIORITY = configMAX_PRIORITIES - 1;
     static constexpr auto TASK_STACK_SIZE = 0x1000;
 
     /**
@@ -56,7 +56,7 @@ private:
     /**
      * DMA buffer size for DAC, should be 32-4092, multiple of 4
      */
-    static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 8;
+    static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 11;
 
     /**
      * Sample rate in Hz for DAC
@@ -83,7 +83,7 @@ private:
     /**
      * Size of the working buffer
      */
-    static constexpr size_t WORKING_BUFFER_SIZE = DAC_CFG_BUFFER_SIZE;
+    static constexpr size_t WORKING_BUFFER_SIZE = DAC_CFG_BUFFER_SIZE / DAC_CFG_DESC_NUM;
 
     dac_continuous_handle_t handle;
     TaskHandle_t task;

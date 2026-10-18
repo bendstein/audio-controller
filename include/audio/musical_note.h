@@ -26,4 +26,10 @@ enum struct musical_note : uint8_t
     MAX
 };
 
+inline musical_note next_note(const musical_note note)
+{
+    constexpr auto max_note = static_cast<uint8_t>(musical_note::MAX);
+    return static_cast<musical_note>((static_cast<uint8_t>(note) + 1) % max_note);
+}
+
 #endif //AUDIO_CONTROLLER_MUSICAL_NOTE_H

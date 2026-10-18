@@ -12,7 +12,7 @@
 #define LOG_LEVEL_DEBUG     4
 #define LOG_LEVEL_VERBOSE   5
 
-#define LOG_LOCAL_LEVEL LOG_LEVEL_DEBUG
+#define LOG_LOCAL_LEVEL LOG_LEVEL_VERBOSE
 #include <string>
 #include <ctime>
 #include <format>
