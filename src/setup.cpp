@@ -6,17 +6,16 @@
 #include "i2c/i2c.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
-app_state start()
+app_state_controller start_controller()
 {
-    LOGI("Starting.");
+    LOGI("Starting (Controller).");
     LOGI("Performing Setup...");
 
-    auto state = app_state {
+    auto state = app_state_controller {
         .i2c_buses = {},
         .distance_sensors = {},
-        .signal_gtor = nullptr,
         .sensor_tasks = {},
-        .dac_write_task = nullptr,
+        .send_audio_task = nullptr,
         .current_tones = {},
         .current_distances = {}
     };
@@ -26,14 +25,68 @@ app_state start()
 
     init_i2c_buses(&state);
     init_distance_sensors(&state);
-    init_signal_generator(&state);
+
+    BaseType_t create_task_result;
+
+    if (try_create_send_audio_task(
+        "<SEND-AUDIO>",
+        &create_task_result,
+        &state
+    ))
+    {
+        FLOGI("{} Started task 0x{:08X} for send audio.",
+            signal_generator::LOG_KEY,
+            reinterpret_cast<uintptr_t>(*state.send_audio_task));
+    }
+    else
+    {
+        FLOGE("{} Failed to start task for send audio. ({})",
+            signal_generator::LOG_KEY,
+            create_task_result);
+    }
 
     LOGI("Finished Setup.");
 
     return state;
 }
 
-void init_i2c_buses(app_state* state)
+app_state_audio start_audio()
+{
+    LOGI("Starting (Audio).");
+    LOGI("Performing Setup...");
+
+    auto state = app_state_audio {
+        .signal_gtor = nullptr,
+        .receive_audio_task = nullptr
+    };
+
+    init_signal_generator(&state);
+
+    BaseType_t create_task_result;
+
+    if (try_create_receive_audio_task(
+        "<RECV-AUDIO>",
+        &create_task_result,
+        &state
+    ))
+    {
+        FLOGI("{} Started task 0x{:08X} for receive audio.",
+            signal_generator::LOG_KEY,
+            reinterpret_cast<uintptr_t>(*state.receive_audio_task));
+    }
+    else
+    {
+        FLOGE("{} Failed to start task for receive audio. ({})",
+            signal_generator::LOG_KEY,
+            create_task_result);
+    }
+
+    LOGI("Finished Setup.");
+
+    return state;
+}
+
+void init_i2c_buses(app_state_controller* state)
 {
     for (auto i = 0; i < BUS_COUNT; i++)
     {
@@ -61,7 +114,7 @@ void init_i2c_buses(app_state* state)
     }
 }
 
-void init_distance_sensors(app_state* state)
+void init_distance_sensors(app_state_controller* state)
 {
     //Init each distance sensor
     for (auto i = 0; i < SENSORS_COUNT; i++)
@@ -181,7 +234,7 @@ void init_distance_sensors(app_state* state)
         FLOGE("Failed to setup distance sensor tasks. All ({}) buses are empty of distance sensors.", BUS_COUNT);
 }
 
-void init_signal_generator(app_state* state)
+void init_signal_generator(app_state_audio* state)
 {
     bool setup_successful = true;
 
@@ -193,26 +246,6 @@ void init_signal_generator(app_state* state)
             state->signal_gtor.swap(maybe_signal_generator);
 
             FLOGI("{} Created signal generator.", signal_generator::LOG_KEY);
-
-            BaseType_t create_task_result;
-
-            if (try_create_dac_write_task(
-                "<DAC-WRITE>",
-                &create_task_result,
-                state
-            ))
-            {
-                FLOGI("{} Started task 0x{:08X} for DAC write.",
-                    signal_generator::LOG_KEY,
-                    reinterpret_cast<uintptr_t>(*state->dac_write_task));
-            }
-            else
-            {
-                setup_successful = false;
-                FLOGE("{} Failed to start task for DAC write. ({})",
-                    signal_generator::LOG_KEY,
-                    create_task_result);
-            }
         }
         else
         {
@@ -228,20 +261,11 @@ void init_signal_generator(app_state* state)
 
     if (!setup_successful)
     {
-        //Clear dac/task if unsuccessful
-        // if (setup->dac_write_task != nullptr)
-        // {
-        //     if (const auto created_task = *setup->dac_write_task; created_task != nullptr)
-        //         vTaskDelete(created_task);
-        //
-        //     setup->dac_write_task = nullptr;
-        // }
-
         state->signal_gtor = nullptr;
     }
 }
 
-bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, const size_t bus_ndx, app_state* state)
+bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, const size_t bus_ndx, app_state_controller* state)
 {
     try
     {
@@ -293,7 +317,58 @@ bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* r
     }
 }
 
-bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_code, app_state* state)
+bool try_create_send_audio_task(const std::string& task_name, BaseType_t* result_code, app_state_controller* state)
+{
+    try
+    {
+        FLOGI("Creating task {}.", task_name);
+        auto task_param = send_audio_task_param {
+            .state = state
+        };
+
+        TaskHandle_t task_handle;
+
+        FLOGD("Calling xTaskCreate for task {}.", task_name);
+
+        *result_code = xTaskCreate(
+            send_audio_task,
+            task_name.c_str(),
+            SEND_AUDIO_TASK_STACK_SIZE,
+            &task_param,
+            SEND_AUDIO_TASK_PRIORITY,
+            &task_handle
+        );
+
+        state->send_audio_task = std::make_unique<TaskHandle_t>(task_handle);
+
+        FLOGD("Result of xTaskCreate for task {} | Code: 0x{:04X}, Handle: 0x{:08X}",
+            task_name,
+            static_cast<int>(*result_code),
+            reinterpret_cast<uintptr_t>(task_handle));
+
+        if (*result_code != pdPASS)
+        {
+            FLOGE("{} Failed to create task {}. Code: 0x{:04X}.",
+                signal_generator::LOG_KEY,
+                task_name,
+                static_cast<int>(*result_code));
+        }
+
+        return *result_code == pdPASS;
+    }
+    catch (std::exception& e)
+    {
+        FLOGE("{} An exception occurred while configuring audio send task: {}",
+            signal_generator::LOG_KEY,
+            e.what());
+
+        *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument
+        return false;
+    }
+}
+
+
+bool try_create_receive_audio_task(const std::string& task_name, BaseType_t* result_code, app_state_audio* state)
 {
     try
     {
@@ -301,7 +376,7 @@ bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_
 
         if (state->signal_gtor != nullptr)
         {
-            auto task_param = dac_write_task_param {
+            auto task_param = receive_audio_task_param {
                 .state = state
             };
 
@@ -310,15 +385,15 @@ bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_
             FLOGD("Calling xTaskCreate for task {}.", task_name);
 
             *result_code = xTaskCreate(
-                dac_write_task,
+                receive_audio_task,
                 task_name.c_str(),
-                DAC_WRITE_TASK_STACK_SIZE,
+                RECEIVE_AUDIO_TASK_STACK_SIZE,
                 &task_param,
-                DAC_WRITE_TASK_PRIORITY,
+                RECEIVE_AUDIO_TASK_PRIORITY,
                 &task_handle
             );
 
-            state->dac_write_task = std::make_unique<TaskHandle_t>(task_handle);
+            state->receive_audio_task = std::make_unique<TaskHandle_t>(task_handle);
 
             FLOGD("Result of xTaskCreate for task {} | Code: 0x{:04X}, Handle: 0x{:08X}",
                 task_name,
@@ -336,14 +411,14 @@ bool try_create_dac_write_task(const std::string& task_name, BaseType_t* result_
             return *result_code == pdPASS;
         }
 
-        LOGE("Cannot configure write task for unconfigured DAC controller.");
+        LOGE("Cannot configure receive audio task for unconfigured application.");
         *result_code = pdFREERTOS_ERRNO_EINVAL; //Invalid argument
 
         return false;
     }
     catch (std::exception& e)
     {
-        FLOGE("{} An exception occurred while configuring write task for DAC: {}",
+        FLOGE("{} An exception occurred while configuring audio receive task: {}",
             signal_generator::LOG_KEY,
             e.what());
 

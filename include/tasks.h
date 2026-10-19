@@ -8,24 +8,34 @@
 
 static constexpr auto DISTANCE_SENSOR_TASK_PRIORITY = 2;
 static constexpr auto DISTANCE_SENSOR_TASK_STACK_SIZE = 0x1000;
-static constexpr auto DAC_WRITE_TASK_PRIORITY = 2;
-static constexpr auto DAC_WRITE_TASK_STACK_SIZE = 0x1000;
+static constexpr auto SEND_AUDIO_TASK_PRIORITY = 2;
+static constexpr auto SEND_AUDIO_TASK_STACK_SIZE = 0x1000;
+static constexpr auto RECEIVE_AUDIO_TASK_PRIORITY = 2;
+static constexpr auto RECEIVE_AUDIO_TASK_STACK_SIZE = 0x1000;
 
 struct bus_sensor_task_param
 {
-    app_state* state;
+    app_state_controller* state;
     size_t index;
 };
 
-struct dac_write_task_param
+struct send_audio_task_param
 {
-    app_state* state;
+    app_state_controller* state;
+};
+
+struct receive_audio_task_param
+{
+    app_state_audio* state;
 };
 
 [[noreturn]]
 void distance_sensor_task(void* task_param_pointer);
 
 [[noreturn]]
-void dac_write_task(void* task_param_pointer);
+void send_audio_task(void* task_param_pointer);
+
+[[noreturn]]
+void receive_audio_task(void* task_param_pointer);
 
 #endif //AUDIO_CONTROLLER_TASKS_H

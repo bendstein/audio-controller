@@ -118,7 +118,7 @@ void signal_generator::dac_task(void* task_param)
             FLOGI("{} Task {} starting main loop.", LOG_KEY, TASK_NAME);
 
             dac_event_data_t ev;
-            tone_period_vec_t tone_data {};
+            tone_vec_t tone_data {};
             size_t offset = 0; //The number of bytes that have been written so far
 
             do
@@ -130,21 +130,9 @@ void signal_generator::dac_task(void* task_param)
 
                     do
                     {
-                        tone_vec_t new_tone_data;
-
-                        if (xQueueReceive(self->tones_queue_handle, &new_tone_data, 0))
+                        if (xQueueReceive(self->tones_queue_handle, &tone_data, 0))
                         {
                             should_update_buffer = true;
-                            tone_data.clear();
-
-                            for (auto i = 0; i < new_tone_data.size(); i++)
-                            {
-                                const auto tone = new_tone_data[i];
-                                tone_data.add_to_end({
-                                    .tone = tone,
-                                    .period = tone.tone.get_period(DAC_CFG_SAMPLE_RATE)
-                                });
-                            }
                         }
 
                         if (should_update_buffer)
@@ -213,7 +201,7 @@ void signal_generator::dac_task(void* task_param)
     do { vTaskDelay(portMAX_DELAY); } while (true);
 }
 
-void signal_generator::update_buffer(const tone_period_vec_t& tone_data, const size_t offset) const
+void signal_generator::update_buffer(const tone_vec_t& tone_data, const size_t offset) const
 {
     try
     {
@@ -233,26 +221,13 @@ void signal_generator::update_buffer(const tone_period_vec_t& tone_data, const s
 
             for (auto t = 0; t < tone_data.size(); t++)
             {
-                if (const auto tone_datum = tone_data[t]; !tone_datum.is_zero_or_invalid())
+                if (const auto tone_datum = tone_data[t]; !tone_datum.is_zero())
                 {
-                    // const auto volume = tone_datum.tone.volume;
-
-                    // sum += static_cast<uint32_t>(std::clamp(
-                    //     tone_datum.tone.volume * (sin(M_TWOPI * (i + offset) / tone_datum.period) + 1) / 2,
-                    //     0.,
-                    //     static_cast<double>(std::numeric_limits<uint32_t>::max())
-                    // ));
-
                     sum += static_cast<uint32_t>(std::clamp(
-                      tone_datum.tone.volume * (sin(M_TWOPI * tone_datum.tone.tone.frequency_hz() * (i + offset) / DAC_CFG_SAMPLE_RATE) + 1) / 2,
+                      tone_datum.volume * (sin(M_TWOPI * tone_datum.tone.frequency_hz() * (i + offset) / DAC_CFG_SAMPLE_RATE) + 1) / 2,
                       0.,
                       static_cast<double>(std::numeric_limits<uint32_t>::max())
                     ));
-
-                    // if (const auto period = tone_datum.period; ((i + offset) % period) <= period / 2)
-                    // {
-                    //     sum += volume;
-                    // }
                 }
             }
 

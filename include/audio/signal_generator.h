@@ -20,21 +20,6 @@ enum struct signal_generator_start_result
     ALREADY_STARTED
 };
 
-struct signal_generator_tone
-{
-    musical_note_tone_volume tone;
-    uint32_t period;
-
-    [[nodiscard]] bool is_zero() const { return period == 0 || tone.is_zero(); }
-    [[nodiscard]] bool is_invalid() const { return tone.is_invalid(); }
-    [[nodiscard]] bool is_zero_or_invalid() const { return period == 0 || tone.is_invalid(); }
-
-    bool operator==(const signal_generator_tone& other) const { return tone == other.tone && period == other.period; }
-
-    [[nodiscard]] static consteval signal_generator_tone create_zero() { return signal_generator_tone(musical_note_tone_volume::create_zero(), 0); }
-    [[nodiscard]] static consteval signal_generator_tone create_invalid() { return signal_generator_tone(musical_note_tone_volume::create_invalid(), 0); }
-};
-
 class signal_generator
 {
 public:
@@ -42,7 +27,6 @@ public:
     static constexpr size_t TONE_DATA_CAPACITY = 5;
 
     typedef fixed_vec<musical_note_tone_volume, TONE_DATA_CAPACITY> tone_vec_t;
-    typedef fixed_vec<signal_generator_tone, TONE_DATA_CAPACITY> tone_period_vec_t;
 private:
     static constexpr auto TASK_NAME = "<SIGNAL-GEN>";
     static constexpr auto TASK_PRIORITY = configMAX_PRIORITIES - 1;
@@ -98,7 +82,7 @@ private:
 
     [[noreturn]] static void dac_task(void* task_param);
 
-    void update_buffer(const tone_period_vec_t& tone_data, size_t offset) const;
+    void update_buffer(const tone_vec_t& tone_data, size_t offset) const;
 public:
     signal_generator();
 

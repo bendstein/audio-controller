@@ -13,7 +13,6 @@
 #include "tasks.h"
 #include "app_common.h"
 
-[[noreturn]]
 void distance_sensor_task(void* task_param_pointer)
 {
     try
@@ -105,18 +104,40 @@ void distance_sensor_task(void* task_param_pointer)
     while (true) { vTaskDelay(portMAX_DELAY); }
 }
 
-[[noreturn]]
-void dac_write_task(void* task_param_pointer)
+void send_audio_task(void* task_param_pointer)
 {
     try
     {
-        if (task_param_pointer == nullptr)
-            throw std::invalid_argument("No data was provided to dac_write_task.");
+        LOGI("Starting send_audio_task.");
 
-        const auto [app_state] = *static_cast<dac_write_task_param*>(task_param_pointer);
+        if (task_param_pointer == nullptr)
+            throw std::invalid_argument("No data was provided to send audio task.");
+
+        const auto [app_state] = *static_cast<send_audio_task_param*>(task_param_pointer);
+
+        //TODO
+    }
+    catch (std::exception& e)
+    {
+        FLOGE("An exception occurred during send audio task: {}", e.what());
+    }
+
+    while (true) { vTaskDelay(portMAX_DELAY); }
+}
+
+void receive_audio_task(void* task_param_pointer)
+{
+    try
+    {
+        LOGI("Starting receive_audio_task.");
+
+        if (task_param_pointer == nullptr)
+            throw std::invalid_argument("No data was provided to receive audio task.");
+
+        const auto [app_state] = *static_cast<receive_audio_task_param*>(task_param_pointer);
 
         if (app_state->signal_gtor == nullptr)
-            throw std::invalid_argument("No signal generator was provided to dac_write_task.");
+            throw std::invalid_argument("No signal generator was provided to receive audio task.");
 
         auto& signal_generator = *app_state->signal_gtor;
 
@@ -131,122 +152,235 @@ void dac_write_task(void* task_param_pointer)
             FLOGI("{} Inner tasks are started.", signal_generator::LOG_KEY);
         }
 
-        // constexpr auto CHORDS_LEN = 6;
-        // const fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY> chords[CHORDS_LEN]
-        // {
-        //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-        //         musical_note_tone(musical_note::A, 1),
-        //         musical_note_tone(musical_note::C, 3)
-        //     }),
-        //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-        //         musical_note_tone(musical_note::A, 2),
-        //         musical_note_tone(musical_note::C, 3)
-        //     }),
-        //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-        //         musical_note_tone(musical_note::A, 3),
-        //         musical_note_tone(musical_note::C, 3)
-        //     }),
-        //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-        //         musical_note_tone(musical_note::A, 4),
-        //         musical_note_tone(musical_note::C, 3)
-        //     }),
-        //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-        //         musical_note_tone(musical_note::A, 5),
-        //         musical_note_tone(musical_note::C, 3)
-        //     }),
-        //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-        //         musical_note_tone(musical_note::A, 6),
-        //         musical_note_tone(musical_note::C, 3)
-        //     })
-        // };
-
-        //Collect the current tones corresponding to each sensor,
-        //and send them to the DAC controller
+         constexpr auto CHORDS_LEN = 6;
+         const fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY> chords[CHORDS_LEN]
+         {
+             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+                 musical_note_tone(musical_note::A, 1),
+                 musical_note_tone(musical_note::C, 3)
+             }),
+             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+                 musical_note_tone(musical_note::A, 2),
+                 musical_note_tone(musical_note::C, 3)
+             }),
+             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+                 musical_note_tone(musical_note::A, 3),
+                 musical_note_tone(musical_note::C, 3)
+             }),
+             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+                 musical_note_tone(musical_note::A, 4),
+                 musical_note_tone(musical_note::C, 3)
+             }),
+             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+                 musical_note_tone(musical_note::A, 5),
+                 musical_note_tone(musical_note::C, 3)
+             }),
+             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+                 musical_note_tone(musical_note::A, 6),
+                 musical_note_tone(musical_note::C, 3)
+             })
+         };
 
         fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data {};
         fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data_prev {};
 
-        // for (size_t i = 0, n = 0; ; i = (i + 1) % std::numeric_limits<size_t>::max())
-        // {
-        //     try
-        //     {
-        //         tone_data.clear();
-        //
-        //         if (i % 1000 == 0)
-        //             n = (n + 1) % CHORDS_LEN;
-        //
-        //         for (size_t c = 0; c < chords[n].size(); c++)
-        //         {
-        //             const auto& tone = chords[n][c];
-        //             tone_data.add_to_end(musical_note_tone_volume {
-        //                 .tone = tone,
-        //                 .volume = MAX_INDIVIDUAL_VOLUME
-        //             });
-        //         }
-        //
-        //         //Only write to DAC ctrl if data changed
-        //         if (!tone_data.sequence_equals(tone_data_prev))
-        //         {
-        //             FLOGV("Tone data changed -> [{}]", tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
-        //
-        //             tone_data_prev.clone_from(tone_data); //Overwrite previous with current data for comparison next iteration
-        //             signal_generator.update_tones(&tone_data_prev);
-        //         }
-        //         else
-        //         {
-        //             FVERBOSE("{} Tone data is unchanged during DAC write task.", signal_generator::LOG_KEY);
-        //         }
-        //     }
-        //     catch (std::exception& e)
-        //     {
-        //         FLOGE("{} An exception occurred during DAC write task: {}",
-        //             signal_generator::LOG_KEY,
-        //             e.what());
-        //     }
-        //
-        //     vTaskDelay(1 / portTICK_PERIOD_MS);
-        // }
-
-        do
+        for (size_t i = 0, n = 0; ; i = (i + 1) % std::numeric_limits<size_t>::max())
         {
-            try
-            {
-                tone_data.clear();
+             try
+             {
+                 //Receive new tone data
+                 // tone_data.clear();
+                 //TODO
 
-                //Get frequency in Hz for each sensor, then give to DAC controller
-                for (const auto t : app_state->current_tones)
-                {
-                    if (!t.is_zero_or_invalid())
-                        tone_data.add_to_end(t);
-                }
+                 if (i % 1000 == 0)
+                 {
+                    tone_data.clear();
 
-                //Only write to DAC ctrl if data changed
-                if (!tone_data.sequence_equals(tone_data_prev))
-                {
-                    FLOGV("Tone data changed -> [{}]", tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
+                    const auto& chord = chords[n];
+                    n = (n + 1) % CHORDS_LEN;
 
-                    tone_data_prev.clone_from(tone_data); //Overwrite previous with current data for comparison next iteration
-                    signal_generator.update_tones(&tone_data_prev);
-                }
-                else
-                {
-                    FVERBOSE("{} Tone data is unchanged during DAC write task.", signal_generator::LOG_KEY);
-                }
-            }
-            catch (std::exception& e)
-            {
-                FLOGE("{} An exception occurred during DAC write task: {}",
-                    signal_generator::LOG_KEY,
-                    e.what());
-            }
+                    for (size_t c = 0; c < chord.size(); c++)
+                    {
+                        tone_data.add_to_end({
+                            chord[c],
+                            MAX_INDIVIDUAL_VOLUME
+                        });
+                    }
+                 }
 
-            vTaskDelay(1 / portTICK_PERIOD_MS);
-        } while (true);
+                 //Only write to DAC ctrl if data changed
+                 if (!tone_data.sequence_equals(tone_data_prev))
+                 {
+                     FLOGV("Tone data changed -> [{}]", tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
+
+                     tone_data_prev.clone_from(tone_data); //Overwrite previous with current data for comparison next iteration
+                     signal_generator.update_tones(&tone_data_prev);
+                 }
+                 else
+                 {
+                     FVERBOSE("{} Tone data is unchanged during receive audio task.", signal_generator::LOG_KEY);
+                 }
+             }
+             catch (std::exception& e)
+             {
+                 FLOGE("{} An exception occurred during receive audio task: {}",
+                     signal_generator::LOG_KEY,
+                     e.what());
+             }
+
+             vTaskDelay(1 / portTICK_PERIOD_MS);
+        }
     }
     catch (std::exception& e)
     {
-        FLOGE("An exception occurred during DAC write task: {}", e.what());
+        FLOGE("An exception occurred during receive audio task: {}", e.what());
     }
 
     while (true) { vTaskDelay(portMAX_DELAY); }
 }
+
+// [[noreturn]]
+// void dac_write_task(void* task_param_pointer)
+// {
+//     try
+//     {
+//         if (task_param_pointer == nullptr)
+//             throw std::invalid_argument("No data was provided to dac_write_task.");
+//
+//         const auto [app_state] = *static_cast<dac_write_task_param*>(task_param_pointer);
+//
+//         if (app_state->signal_gtor == nullptr)
+//             throw std::invalid_argument("No signal generator was provided to dac_write_task.");
+//
+//         auto& signal_generator = *app_state->signal_gtor;
+//
+//         //Start signal_generator inner task
+//         if (const auto start_result = signal_generator.start();
+//             start_result == signal_generator_start_result::ERR)
+//         {
+//             FLOGE("{} Failed to start inner tasks.", signal_generator::LOG_KEY);
+//         }
+//         else
+//         {
+//             FLOGI("{} Inner tasks are started.", signal_generator::LOG_KEY);
+//         }
+//
+//         // constexpr auto CHORDS_LEN = 6;
+//         // const fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY> chords[CHORDS_LEN]
+//         // {
+//         //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+//         //         musical_note_tone(musical_note::A, 1),
+//         //         musical_note_tone(musical_note::C, 3)
+//         //     }),
+//         //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+//         //         musical_note_tone(musical_note::A, 2),
+//         //         musical_note_tone(musical_note::C, 3)
+//         //     }),
+//         //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+//         //         musical_note_tone(musical_note::A, 3),
+//         //         musical_note_tone(musical_note::C, 3)
+//         //     }),
+//         //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+//         //         musical_note_tone(musical_note::A, 4),
+//         //         musical_note_tone(musical_note::C, 3)
+//         //     }),
+//         //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+//         //         musical_note_tone(musical_note::A, 5),
+//         //         musical_note_tone(musical_note::C, 3)
+//         //     }),
+//         //     fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+//         //         musical_note_tone(musical_note::A, 6),
+//         //         musical_note_tone(musical_note::C, 3)
+//         //     })
+//         // };
+//
+//         //Collect the current tones corresponding to each sensor,
+//         //and send them to the DAC controller
+//
+//         fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data {};
+//         fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data_prev {};
+//
+//         // for (size_t i = 0, n = 0; ; i = (i + 1) % std::numeric_limits<size_t>::max())
+//         // {
+//         //     try
+//         //     {
+//         //         tone_data.clear();
+//         //
+//         //         if (i % 1000 == 0)
+//         //             n = (n + 1) % CHORDS_LEN;
+//         //
+//         //         for (size_t c = 0; c < chords[n].size(); c++)
+//         //         {
+//         //             const auto& tone = chords[n][c];
+//         //             tone_data.add_to_end(musical_note_tone_volume {
+//         //                 .tone = tone,
+//         //                 .volume = MAX_INDIVIDUAL_VOLUME
+//         //             });
+//         //         }
+//         //
+//         //         //Only write to DAC ctrl if data changed
+//         //         if (!tone_data.sequence_equals(tone_data_prev))
+//         //         {
+//         //             FLOGV("Tone data changed -> [{}]", tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
+//         //
+//         //             tone_data_prev.clone_from(tone_data); //Overwrite previous with current data for comparison next iteration
+//         //             signal_generator.update_tones(&tone_data_prev);
+//         //         }
+//         //         else
+//         //         {
+//         //             FVERBOSE("{} Tone data is unchanged during DAC write task.", signal_generator::LOG_KEY);
+//         //         }
+//         //     }
+//         //     catch (std::exception& e)
+//         //     {
+//         //         FLOGE("{} An exception occurred during DAC write task: {}",
+//         //             signal_generator::LOG_KEY,
+//         //             e.what());
+//         //     }
+//         //
+//         //     vTaskDelay(1 / portTICK_PERIOD_MS);
+//         // }
+//
+//         do
+//         {
+//             try
+//             {
+//                 tone_data.clear();
+//
+//                 //Get frequency in Hz for each sensor, then give to DAC controller
+//                 for (const auto t : app_state->current_tones)
+//                 {
+//                     if (!t.is_zero_or_invalid())
+//                         tone_data.add_to_end(t);
+//                 }
+//
+//                 //Only write to DAC ctrl if data changed
+//                 if (!tone_data.sequence_equals(tone_data_prev))
+//                 {
+//                     FLOGV("Tone data changed -> [{}]", tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
+//
+//                     tone_data_prev.clone_from(tone_data); //Overwrite previous with current data for comparison next iteration
+//                     signal_generator.update_tones(&tone_data_prev);
+//                 }
+//                 else
+//                 {
+//                     FVERBOSE("{} Tone data is unchanged during DAC write task.", signal_generator::LOG_KEY);
+//                 }
+//             }
+//             catch (std::exception& e)
+//             {
+//                 FLOGE("{} An exception occurred during DAC write task: {}",
+//                     signal_generator::LOG_KEY,
+//                     e.what());
+//             }
+//
+//             vTaskDelay(1 / portTICK_PERIOD_MS);
+//         } while (true);
+//     }
+//     catch (std::exception& e)
+//     {
+//         FLOGE("An exception occurred during DAC write task: {}", e.what());
+//     }
+//
+//     while (true) { vTaskDelay(portMAX_DELAY); }
+// }
