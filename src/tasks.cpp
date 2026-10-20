@@ -152,34 +152,24 @@ void receive_audio_task(void* task_param_pointer)
             FLOGI("{} Inner tasks are started.", signal_generator::LOG_KEY);
         }
 
-         constexpr auto CHORDS_LEN = 6;
-         const fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY> chords[CHORDS_LEN]
-         {
-             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-                 musical_note_tone(musical_note::A, 1),
-                 musical_note_tone(musical_note::C, 3)
-             }),
-             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-                 musical_note_tone(musical_note::A, 2),
-                 musical_note_tone(musical_note::C, 3)
-             }),
-             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-                 musical_note_tone(musical_note::A, 3),
-                 musical_note_tone(musical_note::C, 3)
-             }),
-             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-                 musical_note_tone(musical_note::A, 4),
-                 musical_note_tone(musical_note::C, 3)
-             }),
-             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-                 musical_note_tone(musical_note::A, 5),
-                 musical_note_tone(musical_note::C, 3)
-             }),
-             fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
-                 musical_note_tone(musical_note::A, 6),
-                 musical_note_tone(musical_note::C, 3)
-             })
-         };
+        constexpr auto CHORDS_LEN = 4;
+        const fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY> chords[CHORDS_LEN]
+        {
+            fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+                musical_note_tone(musical_note::A, 3),
+            }),
+            fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+                musical_note_tone(musical_note::A, 4),
+            }),
+            fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+                musical_note_tone(musical_note::A, 5),
+            }),
+            fixed_vec<musical_note_tone, signal_generator::TONE_DATA_CAPACITY>({
+                musical_note_tone(musical_note::A, 6)
+            })
+        };
+
+        // FLOGI("A4:{}\r\n", musical_note_tone(musical_note::A, 4).sine_table()->print_table(64));
 
         fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data {};
         fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data_prev {};

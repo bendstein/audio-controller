@@ -40,12 +40,12 @@ private:
     /**
      * DMA buffer size for DAC, should be 32-4092, multiple of 4
      */
-    static constexpr size_t DAC_CFG_BUFFER_SIZE = 1 << 11;
+    static constexpr size_t DAC_CFG_BUFFER_SIZE = 2048;
 
     /**
      * Sample rate in Hz for DAC
      */
-    static constexpr int DAC_CFG_SAMPLE_RATE = 14000;
+    static constexpr int DAC_CFG_SAMPLE_RATE = musical_note_data::SAMPLE_RATE;
 
     /**
      * Offset of DAC data, -128 to 127
@@ -67,7 +67,7 @@ private:
     /**
      * Size of the working buffer
      */
-    static constexpr size_t WORKING_BUFFER_SIZE = DAC_CFG_BUFFER_SIZE / DAC_CFG_DESC_NUM;
+    static constexpr size_t WORKING_BUFFER_SIZE = 1024;
 
     dac_continuous_handle_t handle;
     TaskHandle_t task;
@@ -82,7 +82,7 @@ private:
 
     [[noreturn]] static void dac_task(void* task_param);
 
-    void update_buffer(const tone_vec_t& tone_data, size_t offset) const;
+    void update_buffer(const tone_vec_t& tone_data, uint64_t offset) const;
 public:
     signal_generator();
 

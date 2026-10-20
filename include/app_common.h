@@ -147,17 +147,17 @@ inline void logd(const std::string& tag, const std::string& message)
 inline void logi(const std::string& tag, const std::string& message)
 {
     if constexpr (LOG_LOCAL_LEVEL >= LOG_LEVEL_INFO)
-    log_message(tag, message, ESP_LOG_INFO);
+        log_message(tag, message, ESP_LOG_INFO);
 }
 inline void logw(const std::string& tag, const std::string& message)
 {
     if constexpr (LOG_LOCAL_LEVEL >= LOG_LEVEL_WARN)
-    log_message(tag, message, ESP_LOG_WARN);
+        log_message(tag, message, ESP_LOG_WARN);
 }
 inline void loge(const std::string& tag, const std::string& message)
 {
     if constexpr (LOG_LOCAL_LEVEL >= LOG_LEVEL_ERROR)
-    log_message(tag, message, ESP_LOG_ERROR);
+        log_message(tag, message, ESP_LOG_ERROR);
 }
 
 #if LOG_LOCAL_LEVEL >= LOG_LEVEL_VERBOSE

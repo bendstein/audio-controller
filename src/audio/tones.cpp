@@ -35,3 +35,28 @@ uint32_t musical_note_tone::get_period(const double frequency_hz, const uint32_t
         0.,
         static_cast<double>(std::numeric_limits<uint32_t>::max())));
 }
+
+double musical_note_tone::sine_table_value_at(const uint64_t index) const
+{
+    if (is_zero_or_invalid())
+        return 0;
+
+    return sine_table()->get_value(index);
+}
+
+uint8_t musical_note_tone::sine_table_value_at(const uint64_t index, const uint8_t scale) const
+{
+    if (is_zero_or_invalid())
+        return 0;
+
+    return sine_table()->get_value(index, scale);
+}
+
+
+uint8_t musical_note_tone_volume::sine_table_value_at(const uint64_t index) const
+{
+    if (volume == 0)
+        return 0;
+
+    return tone.sine_table_value_at(index, volume);
+}

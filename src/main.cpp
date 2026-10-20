@@ -19,6 +19,7 @@ void app_main()
     if constexpr (FLAG_VERBOSE) //Enable verbose logging for specific tags
     {
         esp_log_level_set("main.cpp", ESP_LOG_VERBOSE);
+        // esp_log_level_set("signal_generator.cpp", ESP_LOG_VERBOSE);
     }
 
     LOGV("Log level V enabled.");
@@ -142,7 +143,7 @@ void log_system_state_task(void*)
         {
             try
             {
-                vTaskDelay(5000 / portTICK_PERIOD_MS);
+                vTaskDelay(2500 / portTICK_PERIOD_MS);
 
                 uint32_t total_runtime = 0;
                 const auto tasks_count = uxTaskGetSystemState(task_statuses, MAX_TASK_STATUSES, &total_runtime);

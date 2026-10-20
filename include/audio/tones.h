@@ -10,7 +10,7 @@
 #include "musical_note_data.h"
 #include "musical_note.h"
 
-constexpr double FREQUENCY_C0 = 16.35; //Frequency, in hz, for C in octave 0
+constexpr double FREQUENCY_A4 = 440; //Frequency, in hz, for A in octave 4
 constexpr double FREQUENCY_HZ_EPS = 0.1; //Consider fr within this amount to be equivalent
 
 [[nodiscard]] constexpr double musical_note_freq_hz(const musical_note note, const uint8_t octave)
@@ -18,7 +18,10 @@ constexpr double FREQUENCY_HZ_EPS = 0.1; //Consider fr within this amount to be 
     if (octave == 0) //Special case; if octave is 0, return 0
         return 0.;
 
-    return FREQUENCY_C0 * std::pow(2, static_cast<float>(static_cast<uint8_t>(note) + (octave * static_cast<uint8_t>(musical_note::MAX))) / (static_cast<uint8_t>(musical_note::MAX) * 1.));
+    constexpr auto semitone_a4 = static_cast<uint8_t>(musical_note::A) + (4 * static_cast<uint8_t>(musical_note::MAX));
+    const auto semitone = static_cast<uint8_t>(note) + (octave * static_cast<uint8_t>(musical_note::MAX));
+
+    return FREQUENCY_A4 * std::pow(2, static_cast<double>(semitone - semitone_a4) / (static_cast<uint8_t>(musical_note::MAX) * 1.));
 }
 
 [[nodiscard]] inline const SineTable* get_sine_table_from_note(const musical_note note, const uint8_t octave)
@@ -51,6 +54,8 @@ struct musical_note_tone
     [[nodiscard]] const char* name_no_octave(const bool prefer_flat = false) const { return get_note_name(note, prefer_flat); }
     [[nodiscard]] size_t sine_table_index() const;
     [[nodiscard]] uint32_t get_period(uint32_t sample_rate) const;
+    [[nodiscard]] double sine_table_value_at(uint64_t index) const;
+    [[nodiscard]] uint8_t sine_table_value_at(uint64_t index, uint8_t scale) const;
 
     bool operator==(const musical_note_tone& other) const { return check_frequency_equivalency(frequency_hz(), other.frequency_hz()); }
     bool operator==(const double other_hz) const { return check_frequency_equivalency(frequency_hz(), other_hz); }
@@ -69,6 +74,7 @@ struct musical_note_tone_volume
     [[nodiscard]] bool is_zero() const { return volume == 0 || tone.is_zero(); }
     [[nodiscard]] bool is_invalid() const { return tone.is_invalid(); }
     [[nodiscard]] bool is_zero_or_invalid() const { return volume == 0 || tone.is_invalid(); }
+    [[nodiscard]] uint8_t sine_table_value_at(uint64_t index) const;
 
     bool operator==(const musical_note_tone_volume& other) const { return tone == other.tone && volume == other.volume; }
 
