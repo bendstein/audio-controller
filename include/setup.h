@@ -4,6 +4,8 @@
 
 #ifndef AUDIO_CONTROLLER_SETUP_H
 #define AUDIO_CONTROLLER_SETUP_H
+#include <driver/uart.h>
+
 #include "app_state.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
@@ -29,6 +31,7 @@ static constexpr setup_cfg_dev SENSOR_CFG[SENSORS_COUNT] = {
 void init_i2c_buses(app_state_controller* state);
 void init_distance_sensors(app_state_controller* state);
 void init_signal_generator(app_state_audio* state);
+QueueHandle_t init_uart_controller(uart_port_t uart_num, bool is_receiver);
 bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, size_t bus_ndx, app_state_controller* state);
 bool try_create_send_audio_task(const std::string& task_name, BaseType_t* result_code, app_state_controller* state);
 bool try_create_receive_audio_task(const std::string& task_name, BaseType_t* result_code, app_state_audio* state);

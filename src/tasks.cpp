@@ -118,8 +118,8 @@ void send_audio_task(void* task_param_pointer)
                 {
                     const auto distance_ratio = current_distances[i];
 
-                    if (i == 0)
-                        FLOGI("{}%", distance_ratio * 100);
+                    // if (i == 0)
+                    //     FLOGI("{}%", distance_ratio * 100);
 
                     const auto volume = static_cast<uint8_t>(distance_ratio * MAX_INDIVIDUAL_VOLUME);
 

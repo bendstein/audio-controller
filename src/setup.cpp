@@ -15,9 +15,10 @@ app_state_controller start_controller()
         .i2c_buses = {},
         .distance_sensors = {},
         .sensor_tasks = {},
-        .send_audio_task = nullptr,
         .current_distances = {},
-        .current_distances_mutex = nullptr
+        .send_audio_task = nullptr,
+        .current_distances_mutex = nullptr,
+        .uart_queue = nullptr
     };
 
     state.current_distances_mutex = xSemaphoreCreateBinary();
@@ -31,6 +32,7 @@ app_state_controller start_controller()
         xSemaphoreGive(state.current_distances_mutex);
     }
 
+    state.uart_queue = init_uart_controller(UART_NUM_0, false);
     init_i2c_buses(&state);
     init_distance_sensors(&state);
 
@@ -44,7 +46,7 @@ app_state_controller start_controller()
     {
         FLOGI("{} Started task 0x{:08X} for send audio.",
             signal_generator::LOG_KEY,
-            reinterpret_cast<uintptr_t>(*state.send_audio_task));
+            reinterpret_cast<uintptr_t>(state.send_audio_task));
     }
     else
     {
@@ -65,9 +67,11 @@ app_state_audio start_audio()
 
     auto state = app_state_audio {
         .signal_gtor = nullptr,
-        .receive_audio_task = nullptr
+        .receive_audio_task = nullptr,
+        .uart_queue = nullptr
     };
 
+    state.uart_queue = init_uart_controller(UART_NUM_0, true);
     init_signal_generator(&state);
 
     BaseType_t create_task_result;
@@ -80,7 +84,7 @@ app_state_audio start_audio()
     {
         FLOGI("{} Started task 0x{:08X} for receive audio.",
             signal_generator::LOG_KEY,
-            reinterpret_cast<uintptr_t>(*state.receive_audio_task));
+            reinterpret_cast<uintptr_t>(state.receive_audio_task));
     }
     else
     {
@@ -227,7 +231,7 @@ void init_distance_sensors(app_state_controller* state)
             init_task_success)
         {
             FLOGI("Successfully created distance sensor task 0x{:08X} for I2C bus {}: 0x{:04X}",
-                reinterpret_cast<uintptr_t>(*state->sensor_tasks[i]),
+                reinterpret_cast<uintptr_t>(state->sensor_tasks[i]),
                 i,
                 create_task_result);
         }
@@ -273,6 +277,98 @@ void init_signal_generator(app_state_audio* state)
     }
 }
 
+QueueHandle_t init_uart_controller(const uart_port_t uart_num, const bool is_receiver)
+{
+    constexpr size_t UART_BUFFER_SIZE = 1 << 11;
+    constexpr size_t UART_QUEUE_LEN = 4;
+    const int8_t PIN_TX = is_receiver? UART_PIN_NO_CHANGE : GPIO_NUM_8;
+    const int8_t PIN_RX = is_receiver? GPIO_NUM_7 : UART_PIN_NO_CHANGE;
+    constexpr int8_t PIN_RTS = GPIO_NUM_4;
+    constexpr int8_t PIN_CTS = GPIO_NUM_4;
+
+    QueueHandle_t uart_queue = nullptr;
+
+    auto is_success = true;
+
+    try
+    {
+
+        //Install driver
+        if (const auto install_result = uart_driver_install(uart_num, UART_BUFFER_SIZE, UART_BUFFER_SIZE, UART_QUEUE_LEN, &uart_queue, 0);
+            install_result != ESP_OK)
+        {
+            is_success = false;
+            FLOGE("Failed to install UART {} driver: 0x{:04X}", static_cast<uint8_t>(uart_num), install_result);
+        }
+
+        //Configure communication params
+        if (is_success)
+        {
+            constexpr uart_config_t uart_config = {
+                .baud_rate = 115200,
+                .data_bits = UART_DATA_8_BITS,
+                .parity = UART_PARITY_DISABLE,
+                .stop_bits = UART_STOP_BITS_1,
+                .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
+                .rx_flow_ctrl_thresh = 122,
+                .rx_glitch_filt_thresh = 0,
+                .source_clk = UART_SCLK_DEFAULT,
+                .flags = {
+                    .allow_pd = false,
+                    .backup_before_sleep = false
+                }
+            };
+
+            if (const auto config_result = uart_param_config(uart_num, &uart_config);
+                config_result != ESP_OK)
+            {
+                is_success = false;
+                FLOGE("Failed to configure UART {}: 0x{:04X}", static_cast<uint8_t>(uart_num), config_result);
+            }
+        }
+
+        //Configure pins
+        if (is_success)
+        {
+
+            if (const auto config_pin_result = uart_set_pin(uart_num, PIN_TX, PIN_RX, PIN_RTS, PIN_CTS, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+                config_pin_result != ESP_OK)
+            {
+                is_success = false;
+                FLOGE("Failed to configure UART {} pins: 0x{:04X}", static_cast<uint8_t>(uart_num), config_pin_result);
+            }
+        }
+    }
+    catch (std::exception& e)
+    {
+        is_success = false;
+        FLOGE("An error occurred during UART {} setup: {}", static_cast<uint8_t>(uart_num), e.what());
+    }
+
+    if (is_success)
+    {
+        FLOGI("UART {} setup was successful (tx: {}, rx: {}, rts: {}, cts: {}).", static_cast<uint8_t>(uart_num), PIN_TX, PIN_RX, PIN_RTS, PIN_CTS);
+    }
+    else
+    {
+        FLOGE("UART {} setup was not successful.", static_cast<uint8_t>(uart_num));
+
+        //Uninstall driver if installed
+        if (uart_is_driver_installed(uart_num))
+        {
+            if (const auto uninstall_result = uart_driver_delete(uart_num);
+                uninstall_result != ESP_OK)
+            {
+                FLOGE("Failed to uninstall UART {} driver: 0x{:04X}", static_cast<uint8_t>(uart_num), uninstall_result);
+            }
+        }
+
+        uart_queue = nullptr;
+    }
+
+    return uart_queue;
+}
+
 bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* result_code, const size_t bus_ndx, app_state_controller* state)
 {
     try
@@ -297,7 +393,7 @@ bool try_create_distance_sensor_task(const std::string& task_name, BaseType_t* r
                 &task_handle
             );
 
-            state->sensor_tasks[bus_ndx] = std::make_unique<TaskHandle_t>(task_handle);
+            state->sensor_tasks[bus_ndx] = task_handle;
 
             if (*result_code != pdPASS)
             {
@@ -347,7 +443,7 @@ bool try_create_send_audio_task(const std::string& task_name, BaseType_t* result
             &task_handle
         );
 
-        state->send_audio_task = std::make_unique<TaskHandle_t>(task_handle);
+        state->send_audio_task = task_handle;
 
         FLOGD("Result of xTaskCreate for task {} | Code: 0x{:04X}, Handle: 0x{:08X}",
             task_name,
@@ -375,7 +471,6 @@ bool try_create_send_audio_task(const std::string& task_name, BaseType_t* result
     }
 }
 
-
 bool try_create_receive_audio_task(const std::string& task_name, BaseType_t* result_code, app_state_audio* state)
 {
     try
@@ -401,7 +496,7 @@ bool try_create_receive_audio_task(const std::string& task_name, BaseType_t* res
                 &task_handle
             );
 
-            state->receive_audio_task = std::make_unique<TaskHandle_t>(task_handle);
+            state->receive_audio_task = task_handle;
 
             FLOGD("Result of xTaskCreate for task {} | Code: 0x{:04X}, Handle: 0x{:08X}",
                 task_name,

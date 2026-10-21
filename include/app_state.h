@@ -32,16 +32,18 @@ struct app_state_controller
 {
     std::unique_ptr<i2c_master> i2c_buses[BUS_COUNT];
     fixed_vec<std::unique_ptr<gp2y0e02b::distance_sensor>, SENSORS_COUNT> distance_sensors[BUS_COUNT];
-    std::unique_ptr<TaskHandle_t> sensor_tasks[BUS_COUNT];
-    std::unique_ptr<TaskHandle_t> send_audio_task;
+    TaskHandle_t sensor_tasks[BUS_COUNT];
     double current_distances[SENSORS_COUNT];
+    TaskHandle_t send_audio_task;
     SemaphoreHandle_t current_distances_mutex;
+    QueueHandle_t uart_queue;
 };
 
 struct app_state_audio
 {
     std::unique_ptr<signal_generator> signal_gtor;
-    std::unique_ptr<TaskHandle_t> receive_audio_task;
+    TaskHandle_t receive_audio_task;
+    QueueHandle_t uart_queue;
 };
 
 #endif //AUDIO_CONTROLLER_APP_STATE_H
