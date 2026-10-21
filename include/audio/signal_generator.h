@@ -74,7 +74,6 @@ private:
 
     uint8_t* buffer;
 
-    SemaphoreHandle_t task_started_sem;
     QueueHandle_t tones_queue_handle;
     QueueHandle_t dac_write_queue_handle;
 

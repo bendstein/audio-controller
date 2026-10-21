@@ -34,8 +34,8 @@ struct app_state_controller
     fixed_vec<std::unique_ptr<gp2y0e02b::distance_sensor>, SENSORS_COUNT> distance_sensors[BUS_COUNT];
     std::unique_ptr<TaskHandle_t> sensor_tasks[BUS_COUNT];
     std::unique_ptr<TaskHandle_t> send_audio_task;
-    musical_note_tone_volume current_tones[SENSORS_COUNT];
-    uint8_t current_distances[SENSORS_COUNT];
+    double current_distances[SENSORS_COUNT];
+    SemaphoreHandle_t current_distances_mutex;
 };
 
 struct app_state_audio

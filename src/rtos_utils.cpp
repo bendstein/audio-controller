@@ -36,18 +36,30 @@ rtos_semaphore_handle::~rtos_semaphore_handle()
             {
                 FLOGE("Failed to release semaphore: 0x{:04X}.", release_result);
             }
+            // else
+            // {
+            //     FLOGI("Released semaphore: 0x{:04X}.", release_result);
+            // }
         }
     }
 }
 
 std::unique_ptr<rtos_semaphore_handle> rtos_semaphore_handle::try_take(const SemaphoreHandle_t semaphore, const TickType_t timeout)
 {
+    if (semaphore == nullptr)
+    {
+        LOGE("Failed to take semaphore: nullptr.");
+        return nullptr;
+    }
+
     if (const auto take_result = xSemaphoreTake(semaphore, timeout);
         take_result != pdPASS)
     {
         FLOGE("Failed to take semaphore: 0x{:04X}.", take_result);
         return nullptr;
     }
+
+    // FLOGI("Took semaphore.");
 
     auto handle = std::make_unique<rtos_semaphore_handle>();
     handle->semaphore = semaphore;
@@ -56,6 +68,12 @@ std::unique_ptr<rtos_semaphore_handle> rtos_semaphore_handle::try_take(const Sem
 
 std::unique_ptr<rtos_semaphore_handle> rtos_semaphore_handle::try_take_from_isr(const SemaphoreHandle_t semaphore, BaseType_t* higher_priority_task_woken)
 {
+    if (semaphore == nullptr)
+    {
+        // LOGE("Failed to take semaphore: nullptr.");
+        return nullptr;
+    }
+
     if (const auto take_result = xSemaphoreTakeFromISR(semaphore, higher_priority_task_woken);
         take_result != pdPASS)
     {

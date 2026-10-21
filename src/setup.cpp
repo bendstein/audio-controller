@@ -16,12 +16,20 @@ app_state_controller start_controller()
         .distance_sensors = {},
         .sensor_tasks = {},
         .send_audio_task = nullptr,
-        .current_tones = {},
-        .current_distances = {}
+        .current_distances = {},
+        .current_distances_mutex = nullptr
     };
 
-    for (auto& current_tone : state.current_tones)
-        current_tone = musical_note_tone_volume::create_invalid();
+    state.current_distances_mutex = xSemaphoreCreateBinary();
+
+    if (state.current_distances_mutex == nullptr)
+    {
+        LOGE("Failed to create current distances mutex.");
+    }
+    else
+    {
+        xSemaphoreGive(state.current_distances_mutex);
+    }
 
     init_i2c_buses(&state);
     init_distance_sensors(&state);

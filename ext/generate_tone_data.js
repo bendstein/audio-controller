@@ -206,7 +206,7 @@ const args_dft = {
     octaveMin: 1,
     octaveMax: 7,
     periods: 1,
-    sampleRate: 14000
+    sampleRate: 44100
 };
 
 const args = {

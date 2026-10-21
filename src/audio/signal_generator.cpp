@@ -8,7 +8,6 @@
 
 signal_generator::signal_generator() : handle(nullptr), task(nullptr)
 {
-    task_started_sem = xSemaphoreCreateBinary();
     tones_queue_handle = xQueueCreate(TONES_QUEUE_CAPACITY, sizeof(tone_vec_t));
     dac_write_queue_handle = xQueueCreate(DAC_WRITE_QUEUE_CAPACITY, sizeof(dac_event_data_t));
 
