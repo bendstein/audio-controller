@@ -2,7 +2,6 @@
 #include <iomanip>
 
 #include <driver/gpio.h>
-
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
 
@@ -19,6 +18,8 @@ void app_main()
     if constexpr (FLAG_VERBOSE) //Enable verbose logging for specific tags
     {
         esp_log_level_set("main.cpp", ESP_LOG_VERBOSE);
+        esp_log_level_set("uart_receive_queue.cpp", ESP_LOG_VERBOSE);
+        esp_log_level_set("tasks.cpp", ESP_LOG_VERBOSE);
         // esp_log_level_set("signal_generator.cpp", ESP_LOG_VERBOSE);
     }
 

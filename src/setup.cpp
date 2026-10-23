@@ -1,6 +1,10 @@
 //
 // Created by bendstein on 12/27/2025.
 //
+#include "app_common.h"
+
+#include <driver/uart.h>
+
 #include "setup.h"
 #include "tasks.h"
 #include "i2c/i2c.h"
@@ -16,6 +20,7 @@ app_state_controller start_controller()
         .distance_sensors = {},
         .sensor_tasks = {},
         .current_distances = {},
+        .distance_changes = {},
         .send_audio_task = nullptr,
         .current_distances_mutex = nullptr,
         .uart_queue = nullptr
@@ -280,7 +285,7 @@ void init_signal_generator(app_state_audio* state)
 QueueHandle_t init_uart_controller(const uart_port_t uart_num, const bool is_receiver)
 {
     constexpr size_t UART_BUFFER_SIZE = 1 << 11;
-    constexpr size_t UART_QUEUE_LEN = 4;
+    constexpr size_t UART_QUEUE_LEN = 255;
     const int8_t PIN_TX = is_receiver? UART_PIN_NO_CHANGE : GPIO_NUM_8;
     const int8_t PIN_RX = is_receiver? GPIO_NUM_7 : UART_PIN_NO_CHANGE;
     constexpr int8_t PIN_RTS = GPIO_NUM_4;
@@ -307,7 +312,7 @@ QueueHandle_t init_uart_controller(const uart_port_t uart_num, const bool is_rec
             constexpr uart_config_t uart_config = {
                 .baud_rate = 115200,
                 .data_bits = UART_DATA_8_BITS,
-                .parity = UART_PARITY_DISABLE,
+                .parity = UART_PARITY_EVEN,
                 .stop_bits = UART_STOP_BITS_1,
                 .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
                 .rx_flow_ctrl_thresh = 122,
@@ -330,7 +335,6 @@ QueueHandle_t init_uart_controller(const uart_port_t uart_num, const bool is_rec
         //Configure pins
         if (is_success)
         {
-
             if (const auto config_pin_result = uart_set_pin(uart_num, PIN_TX, PIN_RX, PIN_RTS, PIN_CTS, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
                 config_pin_result != ESP_OK)
             {

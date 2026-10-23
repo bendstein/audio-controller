@@ -155,7 +155,7 @@ void signal_generator::dac_task(void* task_param)
                     }
                     while (!xQueueReceive(self->dac_write_queue_handle, &ev, 1 / portTICK_PERIOD_MS));
 
-                    FVERBOSE("{} Task {} received DAC event.", LOG_KEY, TASK_NAME);
+                    // FVERBOSE("{} Task {} received DAC event.", LOG_KEY, TASK_NAME);
 
                     size_t loaded = 0;
 
@@ -169,7 +169,7 @@ void signal_generator::dac_task(void* task_param)
                             LOG_KEY, TASK_NAME, write_result, esp_err_to_name(write_result));
                     }
 
-                    FVERBOSE("{} Task {} wrote {} bytes to DAC.", LOG_KEY, TASK_NAME, loaded);
+                    // FVERBOSE("{} Task {} wrote {} bytes to DAC.", LOG_KEY, TASK_NAME, loaded);
 
                     //Update offset
                     offset += loaded;
@@ -219,11 +219,11 @@ void signal_generator::update_buffer(const tone_vec_t& tone_data, const uint64_t
 {
     try
     {
-        FVERBOSE("{} Populate working buffer starting at offset {}", LOG_KEY, offset);
+        // FVERBOSE("{} Populate working buffer starting at offset {}", LOG_KEY, offset);
 
         if (tone_data.empty()) //No data given. Clear buffer and reset offset.
         {
-            FVERBOSE("{} Clearing working buffer.", LOG_KEY, offset);
+            // FVERBOSE("{} Clearing working buffer.", LOG_KEY, offset);
             memset(buffer, 0, WORKING_BUFFER_SIZE);
             return;
         }

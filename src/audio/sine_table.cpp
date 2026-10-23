@@ -6,7 +6,7 @@
 #include <format>
 #include <algorithm>
 
-#include <audio/sine_table.h>
+#include "audio/sine_table.h"
 
 uint8_t SineTable::get_value(const size_t n, const uint8_t scale) const
 {

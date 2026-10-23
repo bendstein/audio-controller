@@ -7,7 +7,6 @@
 
 #include "fixed_vec.h"
 #include "audio/signal_generator.h"
-#include "audio/tones.h"
 #include "i2c/i2c.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
@@ -34,6 +33,7 @@ struct app_state_controller
     fixed_vec<std::unique_ptr<gp2y0e02b::distance_sensor>, SENSORS_COUNT> distance_sensors[BUS_COUNT];
     TaskHandle_t sensor_tasks[BUS_COUNT];
     double current_distances[SENSORS_COUNT];
+    bool distance_changes[SENSORS_COUNT];
     TaskHandle_t send_audio_task;
     SemaphoreHandle_t current_distances_mutex;
     QueueHandle_t uart_queue;

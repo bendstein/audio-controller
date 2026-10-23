@@ -29,6 +29,17 @@ struct receive_audio_task_param
     app_state_audio* state;
 };
 
+struct tone_message
+{
+    musical_note_tone_volume data;
+    uint8_t index;
+
+    void write_bytes(uint8_t* buf) const;
+    static tone_message read_bytes(uint8_t* buf, size_t len);
+
+    bool operator==(const tone_message& other) const { return data == other.data && index == other.index; }
+};
+
 [[noreturn]]
 void distance_sensor_task(void* task_param_pointer);
 

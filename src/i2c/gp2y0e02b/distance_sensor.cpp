@@ -3,13 +3,13 @@
 //
 #include <memory>
 
-#include "freertos/FreeRTOS.h"
-#include "freertos/FreeRTOSConfig.h"
-#include "freertos/task.h"
-
 #include "app_common.h"
 #include "i2c/i2c.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
+
+#include "freertos/FreeRTOS.h"
+#include "freertos/FreeRTOSConfig.h"
+#include "freertos/task.h"
 
 gp2y0e02b::distance_sensor::distance_sensor(i2c_master_dev_handle_t device_handle, const uint8_t address, const size_t index)
     : handle(device_handle), address(address), index(index)
