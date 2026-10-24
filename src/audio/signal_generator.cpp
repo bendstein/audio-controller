@@ -141,9 +141,9 @@ void signal_generator::dac_task(void* task_param)
                         {
                             should_update_buffer = true;
 
-                            //If new tone data has been received, can reset offset
-                            offset = 0;
-                            offset_into_buffer = 0;
+                            // //If new tone data has been received, can reset offset
+                            // offset = 0;
+                            // offset_into_buffer = 0;
                         }
 
                         if (should_update_buffer)

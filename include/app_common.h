@@ -16,7 +16,7 @@
 #error app_common.h should be included before esp_log.h
 #endif
 
-#define LOG_LOCAL_LEVEL LOG_LEVEL_VERBOSE
+#define LOG_LOCAL_LEVEL LOG_LEVEL_INFO
 
 #include <string>
 #include <ctime>

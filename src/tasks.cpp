@@ -237,9 +237,10 @@ void receive_audio_task(void* task_param_pointer)
         uint8_t uart_queue_buffer2[UART_QUEUE_BUFFER2_CAPACITY] {};
         uint8_t uart_read_buffer[sizeof(uint32_t)] {};
 
-        auto uart_data_queue = uart_receive_queue(UART_NUM_0, uart_queue_buffer,
-                                                                UART_QUEUE_BUFFER_CAPACITY, uart_queue_buffer2,
-                                                                UART_QUEUE_BUFFER2_CAPACITY, sizeof(uint32_t), 0xFF);
+        auto uart_data_queue = uart_receive_queue(UART_NUM_0,
+            uart_queue_buffer, UART_QUEUE_BUFFER_CAPACITY,
+            uart_queue_buffer2, UART_QUEUE_BUFFER2_CAPACITY,
+            sizeof(uint32_t), 0xFF);
 
         tone_message message_data[signal_generator::TONE_DATA_CAPACITY] {};
 
@@ -275,10 +276,12 @@ void receive_audio_task(void* task_param_pointer)
                     }
 
                     //Handle new messages
-                    size_t copied = 0;
+                    size_t copied;
 
                     do
                     {
+                        copied = 0;
+
                         if (const auto read_item_result = uart_data_queue.next(uart_read_buffer, sizeof(uint32_t), copied);
                             read_item_result != ESP_OK)
                         {
@@ -291,33 +294,34 @@ void receive_audio_task(void* task_param_pointer)
                         {
                             assert(copied == sizeof(uint32_t));
 
-                            FVERBOSE("Read {} bytes ({}, {}, {}, {}) from uart data queue.", copied,
-                                uart_read_buffer[0], uart_read_buffer[1], uart_read_buffer[2], uart_read_buffer[3]);
+                            // FVERBOSE("Read {} bytes ({}, {}, {}, {}) from uart data queue.", copied,
+                                // uart_read_buffer[0], uart_read_buffer[1], uart_read_buffer[2], uart_read_buffer[3]);
 
                             const auto [new_data, new_index] = tone_message::read_bytes(uart_read_buffer, copied);
 
                             if (new_index >= signal_generator::TONE_DATA_CAPACITY)
                             {
-                                // FLOGE("Tone message index {} out of range", new_index);
+                                FLOGE("Tone message index {} out of range", new_index);
                                 continue;
                             }
 
-                            if (auto current_message = message_data[new_index];
+                            if (auto& current_message = message_data[new_index];
                                 new_data != current_message.data)
                             {
                                 current_message.data = new_data;
-                                FVERBOSE("Tone data {} => (T: {}, V: {}).", new_index, current_message.data.tone.name(), current_message.data.volume);
+                                // FVERBOSE("Tone data {} => (T: {}, V: {}).", new_index, current_message.data.tone.name(), current_message.data.volume);
                                 has_change = true;
                             }
                             else
                             {
-                                FVERBOSE("Tone data {} unchanged.", current_message.index);
+                                // FVERBOSE("Tone data {} unchanged.", current_message.index);
                             }
                         }
                     }
                     while (copied > 0);
 
-                    vTaskDelay(2 / portTICK_PERIOD_MS);
+                    if (!has_change)
+                        vTaskDelay(2 / portTICK_PERIOD_MS);
                 }
                 while (!has_change);
 
