@@ -54,6 +54,7 @@ struct musical_note_tone
     [[nodiscard]] const char* name_no_octave(const bool prefer_flat = false) const { return get_note_name(note, prefer_flat); }
     [[nodiscard]] size_t sine_table_index() const;
     [[nodiscard]] uint32_t get_period(uint32_t sample_rate) const;
+    [[nodiscard]] double get_periodd(uint32_t sample_rate) const;
     [[nodiscard]] double sine_table_value_at(uint64_t index) const;
     [[nodiscard]] uint8_t sine_table_value_at(uint64_t index, uint8_t scale) const;
 
@@ -64,6 +65,7 @@ struct musical_note_tone
     [[nodiscard]] static consteval musical_note_tone create_invalid() { return musical_note_tone(musical_note::C, 0xFF); }
     [[nodiscard]] static const SineTable* get_sine_table(const musical_note_tone& tone) { return get_sine_table_from_note(tone.note, tone.octave); }
     [[nodiscard]] static uint32_t get_period(double frequency_hz, uint32_t sample_rate);
+    [[nodiscard]] static double get_periodd(double frequency_hz, uint32_t sample_rate);
 };
 
 struct musical_note_tone_volume

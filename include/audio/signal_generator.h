@@ -1,23 +1,23 @@
 //
-// Created by bendstein on 8/15/2026.
+// Created by bendstein on 11/2/2026.
 //
 
-#ifndef AUDIO_CONTROLLER_SIGNAL_GENERATOR_H
-#define AUDIO_CONTROLLER_SIGNAL_GENERATOR_H
+#ifndef AUDIO_CONTROLLER_SIGNAL_GENERATOR2_H
+#define AUDIO_CONTROLLER_SIGNAL_GENERATOR2_H
 #include <memory>
 
 #include <freertos/FreeRTOS.h>
 #include <freertos/task.h>
-#include <driver/dac_continuous.h>
+#include <driver/dac_oneshot.h>
+#include <driver/gptimer.h>
 
 #include "fixed_vec.h"
 #include "tones.h"
 
-enum struct signal_generator_start_result
+struct signal_generator_param
 {
-    OK,
-    ERR,
-    ALREADY_STARTED
+    uint64_t sample_rate_hz;
+    size_t timer_queue_size;
 };
 
 class signal_generator
@@ -25,6 +25,7 @@ class signal_generator
 public:
     static constexpr auto LOG_KEY = "[Signal Gen]";
     static constexpr size_t TONE_DATA_CAPACITY = 5;
+    static constexpr uint32_t TIMER_RESOLUTION_HZ = 1000000;
 
     typedef fixed_vec<musical_note_tone_volume, TONE_DATA_CAPACITY> tone_vec_t;
 private:
@@ -32,71 +33,36 @@ private:
     static constexpr auto TASK_PRIORITY = configMAX_PRIORITIES - 1;
     static constexpr auto TASK_STACK_SIZE = 0x1000;
 
-    /**
-     * Count of DMA descriptors for DAC config
-     */
-    static constexpr int DAC_CFG_DESC_NUM = 2;
+    typedef fixed_vec<uint32_t, TONE_DATA_CAPACITY> half_period_vec_t;
+    typedef fixed_vec<uint8_t, TONE_DATA_CAPACITY> volume_vec_t;
 
-    /**
-     * DMA buffer size for DAC, should be 32-4092, multiple of 4
-     */
-    static constexpr size_t DAC_CFG_BUFFER_SIZE = 2048;
-
-    /**
-     * Sample rate in Hz for DAC
-     */
-    static constexpr int DAC_CFG_SAMPLE_RATE = musical_note_data::SAMPLE_RATE;
-
-    /**
-     * Offset of DAC data, -128 to 127
-     */
-    static constexpr int DAC_CFG_OFFSET = 0;
-
-    /**
-     * Max number of events in the event queue that is populated in ISR,
-     * oldest item is dropped once exceeded
-     */
-    static constexpr size_t DAC_WRITE_QUEUE_CAPACITY = 8;
-
-    /**
-     * Max number of events in the event queue that contains changes to tone  data,
-     * oldest item is dropped once exceeded
-     */
-    static constexpr size_t TONES_QUEUE_CAPACITY = 1;
-
-    /**
-     * Size of the working buffer
-     */
-    static constexpr size_t WORKING_BUFFER_SIZE = 1024;
-
-    dac_continuous_handle_t handle;
+    dac_oneshot_handle_t dac_handle;
+    dac_oneshot_handle_t dac_handle1;
+    gptimer_handle_t timer_handle;
     TaskHandle_t task;
-
-    uint8_t* buffer;
-
+    QueueHandle_t timer_queue_handle;
     QueueHandle_t tones_queue_handle;
-    QueueHandle_t dac_write_queue_handle;
 
-    static bool IRAM_ATTR dac_isr(dac_continuous_handle_t, const dac_event_data_t* ev, void* isr_param);
+    uint64_t sample_rate_hz;
+
+    static bool IRAM_ATTR timer_isr(gptimer_handle_t timer, const gptimer_alarm_event_data_t* ev, void* isr_param);
 
     [[noreturn]] static void dac_task(void* task_param);
 
-    void update_buffer(const tone_vec_t& tone_data, uint64_t offset) const;
+    explicit signal_generator(const signal_generator_param& param);
 public:
-    signal_generator();
-
+    signal_generator() = delete;
     signal_generator(const signal_generator& other) = delete;
     signal_generator(signal_generator&& other) = delete;
     signal_generator& operator=(const signal_generator& other) = delete;
     signal_generator& operator=(signal_generator&& other) = delete;
 
-    void update_tones(const tone_vec_t* data, TickType_t timeout = portMAX_DELAY) const;
+    esp_err_t start();
+    bool update_tones(const tone_vec_t* data, TickType_t timeout = portMAX_DELAY);
 
-    signal_generator_start_result start();
-
-    [[nodiscard]] static std::unique_ptr<signal_generator> try_create(dac_channel_mask_t channels = DAC_CHANNEL_MASK_ALL, dac_continuous_channel_mode_t channel_mode = DAC_CHANNEL_MODE_SIMUL);
+    [[nodiscard]] static std::unique_ptr<signal_generator> try_create(const signal_generator_param& param);
 
     ~signal_generator();
 };
 
-#endif //AUDIO_CONTROLLER_SIGNAL_GENERATOR_H
+#endif //AUDIO_CONTROLLER_SIGNAL_GENERATOR2_H

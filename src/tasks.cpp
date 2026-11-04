@@ -222,9 +222,9 @@ void receive_audio_task(void* task_param_pointer)
 
         //Start signal_generator inner task
         if (const auto start_result = signal_generator.start();
-            start_result == signal_generator_start_result::ERR)
+            start_result != ESP_OK)
         {
-            FLOGE("{} Failed to start inner tasks.", signal_generator::LOG_KEY);
+            FLOGE("{} Failed to start inner tasks (0x{:02X}).", signal_generator::LOG_KEY, start_result);
         }
         else
         {
@@ -254,6 +254,39 @@ void receive_audio_task(void* task_param_pointer)
 
         fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data{};
         fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data_prev{};
+
+        // tone_data.add_to_end(musical_note_tone_volume {
+        //     .tone = {
+        //         .note = musical_note::A,
+        //         .octave = 4
+        //     },
+        //     .volume = MAX_INDIVIDUAL_VOLUME
+        // });
+        // tone_data.add_to_end(musical_note_tone_volume {
+        //     .tone = {
+        //         .note = musical_note::C_Sharp,
+        //         .octave = 5
+        //     },
+        //     .volume = MAX_INDIVIDUAL_VOLUME
+        // });
+        // tone_data.add_to_end(musical_note_tone_volume {
+        //     .tone = {
+        //         .note = musical_note::E,
+        //         .octave = 5
+        //     },
+        //     .volume = MAX_INDIVIDUAL_VOLUME
+        // });
+        // tone_data.add_to_end(musical_note_tone_volume {
+        //     .tone = {
+        //         .note = musical_note::B,
+        //         .octave = 5
+        //     },
+        //     .volume = MAX_INDIVIDUAL_VOLUME
+        // });
+        //
+        // signal_generator.update_tones(&tone_data);
+        //
+        // while (true) { vTaskDelay(portMAX_DELAY); }
 
         do
         {
@@ -339,8 +372,9 @@ void receive_audio_task(void* task_param_pointer)
                 FVERBOSE("Tone data changed -> [{}]",
                         tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
 
-                tone_data_prev.clone_from(tone_data);
                 //Overwrite previous with current data for comparison next iteration
+                tone_data_prev.clone_from(tone_data);
+
                 signal_generator.update_tones(&tone_data_prev);
             }
             catch (std::exception& e)

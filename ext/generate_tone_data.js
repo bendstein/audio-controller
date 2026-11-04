@@ -44,6 +44,19 @@ const NOTE_NAMES = [
     ["B"]
 ];
 
+const WRAPPER_NONE = 0;
+const WRAPPER_IN = 1;
+const WRAPPER_OUT = 2;
+const WRAPPER_VIBRATO = 3;
+
+const WRAPPER_NAMES = [
+    "NONE",
+    "IN",
+    "OUT",
+    "VIBRATO"
+];
+
+
 /**
  *
  * @param {string[]} argv
@@ -116,6 +129,63 @@ function note_ndx(note_name) {
 }
 
 /**
+ * Index in WRAPPER_NAMES corresponding to the given wrapper_name
+ * @param wrapper_name
+ */
+function wrapper_ndx(wrapper_name) {
+    for(let i = 0; i < WRAPPER_NAMES.length; i++)
+    {
+        if(WRAPPER_NAMES[i] === wrapper_name)
+            return i;
+    }
+
+    return -1;
+}
+
+function sigmoid(scale_num = 1, scale_den = 1, rate = 1, off_y = 0, off_t = 0, invert = false) {
+    return t => {
+        let y = (scale_num / (scale_den + Math.exp(rate * (t + off_t))));
+
+        if(invert)
+           y = 1 - y;
+
+        return y + off_y;
+    }
+}
+
+function generate_wrapper_table_in() {
+    const t_end_s = 0.02;
+    const f = sigmoid(1, 1, 0.5, 0, -10, true);
+
+    const len = t_end_s * args.sampleRate;
+    let table = [];
+
+    for(let i = 0; i < len; i++) {
+        table.push(f(i / args.sampleRate));
+    }
+
+    return table;
+}
+
+function generate_wrapper_table_out() {
+    const t_end_s = 0.1;
+    const f = sigmoid(1, 1, 0.1, 0, -40, false);
+
+    const len = t_end_s * args.sampleRate;
+    let table = [];
+
+    for(let i = 0; i < len; i++) {
+        table.push(f(i / args.sampleRate));
+    }
+
+    return table;
+}
+
+function generate_wrapper_table_vibrato() {
+
+}
+
+/**
  * Map the given value between 0 and 1 to a byte from 0 to 255
  * @param {number} value from 0-1
  * @returns {number} [0-255]
@@ -128,19 +198,15 @@ function map_to_byte(value) {
 }
 
 /**
- *
- * @param note
- * @param octave
+ * @param frequency
  * @returns The least number of elements that is required to populate the table
  * with {args.periods} periods of the given tone
  */
-function get_table_length(note, octave) {
-    const frequency = musical_note_freq_hz(note, octave);
+function get_table_length(frequency) {
     const period = 1.0 / frequency;
     const samples_per_period = args.sampleRate * period;
     return Math.ceil(args.periods * samples_per_period);
 }
-
 
 /**
  * @param {number} note Ordinal into NOTE_SYMBOLS
@@ -150,7 +216,7 @@ function get_table_length(note, octave) {
  */
 function generate_table(note, octave) {
     const frequency = musical_note_freq_hz(note, octave);
-    const table_len = get_table_length(note, octave);
+    const table_len = get_table_length(frequency);
 
     let table = [];
 
@@ -161,7 +227,6 @@ function generate_table(note, octave) {
         //between [0, 1]
         const value = (1 + Math.sin(2 * Math.PI * t * frequency)) / 2;
 
-        // table.push(map_to_byte(value));
         table.push(value);
     }
 

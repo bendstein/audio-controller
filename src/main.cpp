@@ -7,7 +7,6 @@
 
 #include "main.h"
 #include "setup.h"
-#include "audio/signal_generator.h"
 
 [[noreturn]]
 void app_main()

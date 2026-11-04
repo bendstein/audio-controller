@@ -257,7 +257,12 @@ void init_signal_generator(app_state_audio* state)
 
     try
     {
-        if (auto maybe_signal_generator = signal_generator::try_create();
+        constexpr signal_generator_param signal_generator_config = {
+            .sample_rate_hz = 22050,
+            .timer_queue_size = 10
+        };
+
+        if (auto maybe_signal_generator = signal_generator::try_create(signal_generator_config);
             maybe_signal_generator != nullptr)
         {
             state->signal_gtor.swap(maybe_signal_generator);
