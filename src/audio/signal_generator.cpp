@@ -8,7 +8,7 @@ signal_generator::signal_generator(const signal_generator_param& param)
     : dac_handle(nullptr), dac_handle1(nullptr), timer_handle(nullptr), task(nullptr), sample_rate_hz(param.sample_rate_hz)
 {
     timer_queue_handle = xQueueCreate(param.timer_queue_size, sizeof(gptimer_alarm_event_data_t));
-    tones_queue_handle = xQueueCreate(1, sizeof(tone_vec_t));
+    tones_queue_handle = xQueueCreate(1, sizeof(signal_generator_tone*));
 }
 
 signal_generator::~signal_generator()
@@ -120,8 +120,9 @@ void signal_generator::dac_task(void* task_param)
 
         gptimer_alarm_event_data_t ev;
         uint64_t t = 0;
-        half_period_vec_t half_period_data {};
-        volume_vec_t volume_data {};
+
+        uint32_t half_period_data[TONE_DATA_CAPACITY] {};
+        signal_generator_tone tone_data[TONE_DATA_CAPACITY] {};
 
         FLOGI("{} Task {} starting main loop.", LOG_KEY, TASK_NAME);
 
@@ -133,31 +134,21 @@ void signal_generator::dac_task(void* task_param)
 
             do
             {
-                tone_vec_t new_tone_data;
+                signal_generator_tone* new_tone_data;
+
                 if (const auto result = xQueueReceive(self->tones_queue_handle, &new_tone_data, 0);
                     result == pdTRUE)
                 {
                     FVERBOSE("Received new tone data ({}).", new_tone_data.size());
                     recalculate_next = true; //Tone data changed, so next should be recalculated
 
-                    half_period_data.clear();
-                    volume_data.clear();
-
-                    for (auto i = 0; i < new_tone_data.size(); i++)
+                    for (auto i = 0; i < TONE_DATA_CAPACITY; i++)
                     {
-                        if (const auto tone_datum = new_tone_data[i];
-                            !tone_datum.is_zero_or_invalid())
-                        {
-                            const auto half_period = musical_note_tone::get_period(tone_datum.tone.frequency_hz() * 2, TIMER_RESOLUTION_HZ);
-                            half_period_data.add_to_end(half_period);
-                            volume_data.add_to_end(tone_datum.volume);
+                        const auto tone = new_tone_data[i];
+                        const auto half_period = musical_note_tone::get_period(tone.frequency_hz * 2, TIMER_RESOLUTION_HZ);
 
-                            // FVERBOSE("Half period {}: {}", i, half_period);
-                        }
-                        // else
-                        // {
-                        //     FVERBOSE("Invalid tone {}: {}, v = {}.", i, tone_datum.tone.name(), tone_datum.volume);
-                        // }
+                        tone_data[i] = tone;
+                        half_period_data[i] = half_period;
                     }
                 }
 
@@ -166,12 +157,13 @@ void signal_generator::dac_task(void* task_param)
                     recalculate_next = false;
                     next = 0;
 
-                    for (auto i = 0; i < half_period_data.size(); i++)
+                    for (auto i = 0; i < TONE_DATA_CAPACITY; i++)
                     {
-                        if (const auto half_period = half_period_data[i];
-                            (t / half_period) % 2 == 0)
+                        if (const auto [frequency_hz, volume] = tone_data[i];
+                            frequency_hz > 0 && volume > 0
+                            && (t / half_period_data[i]) % 2 == 0)
                         {
-                            next += volume_data[i];
+                            next += volume;
                         }
                     }
                 }
@@ -254,11 +246,11 @@ esp_err_t signal_generator::start()
     return ESP_FAIL;
 }
 
-bool signal_generator::update_tones(const tone_vec_t* data, const TickType_t timeout)
+bool signal_generator::update_tones(const signal_generator_tone data[TONE_DATA_CAPACITY], const TickType_t timeout)
 {
     VERBOSE("Updating tone data.");
 
-    if (const auto result = xQueueSendToBack(tones_queue_handle, data, timeout) == pdTRUE;
+    if (const auto result = xQueueSendToBack(tones_queue_handle, &data, timeout) == pdTRUE;
         result)
     {
         VERBOSE("Sent updated tone data.");

@@ -99,16 +99,14 @@ void send_audio_task(void* task_param_pointer)
             throw std::invalid_argument("No data was provided to send audio task.");
 
         const auto [app_state] = *static_cast<send_audio_task_param*>(task_param_pointer);
-        uint8_t tone_message_data[2 * sizeof(uint32_t)] {};
+        uint8_t tone_message_data[2 * tone_message::MESSAGE_LENGTH] {};
         double current_distances[SENSORS_COUNT] {};
         bool distance_changes[SENSORS_COUNT] {};
         musical_note_tone_volume current_tones[SENSORS_COUNT] {};
 
         //Prefix tone message data with start pattern
-        tone_message_data[0] = 0xFF;
-        tone_message_data[1] = 0xFF;
-        tone_message_data[2] = 0xFF;
-        tone_message_data[3] = 0xFF;
+        for (auto i = 0; i < tone_message::MESSAGE_LENGTH; i++)
+            tone_message_data[i] = 0xFF;
 
         for (auto& current_tone : current_tones)
             current_tone = musical_note_tone_volume::create_invalid();
@@ -156,12 +154,9 @@ void send_audio_task(void* task_param_pointer)
                     };
 
                     //Send changed tone
-                    tone_message {
-                        .data = current_tones[s],
-                        .index = s
-                    }.write_bytes(tone_message_data + sizeof(uint32_t));
+                    tone_message(current_tones[s], s).serialize(tone_message_data + tone_message::MESSAGE_LENGTH);
 
-                    if (const auto bytes_sent = uart_write_bytes(UART_NUM_0, tone_message_data, 2 * sizeof(uint32_t));
+                    if (const auto bytes_sent = uart_write_bytes(UART_NUM_0, tone_message_data, 2 * tone_message::MESSAGE_LENGTH);
                         bytes_sent < 0)
                     {
                         FLOGE("Failed to send tone message {} ({}).", s, bytes_sent);
@@ -175,12 +170,9 @@ void send_audio_task(void* task_param_pointer)
 
                     for (uint8_t s = 0; s < SENSORS_COUNT; s++)
                     {
-                        tone_message {
-                            .data = current_tones[s],
-                            .index = s
-                        }.write_bytes(tone_message_data + sizeof(uint32_t));
+                        tone_message(current_tones[s], s).serialize(tone_message_data + tone_message::MESSAGE_LENGTH);
 
-                        if (const auto bytes_sent = uart_write_bytes(UART_NUM_0, tone_message_data, 2 * sizeof(uint32_t));
+                        if (const auto bytes_sent = uart_write_bytes(UART_NUM_0, tone_message_data, 2 * tone_message::MESSAGE_LENGTH);
                             bytes_sent < 0)
                         {
                             FLOGE("Failed to send tone message {} ({}).", s, bytes_sent);
@@ -235,25 +227,46 @@ void receive_audio_task(void* task_param_pointer)
         constexpr size_t UART_QUEUE_BUFFER2_CAPACITY = 255;
         uint8_t uart_queue_buffer[UART_QUEUE_BUFFER_CAPACITY] {};
         uint8_t uart_queue_buffer2[UART_QUEUE_BUFFER2_CAPACITY] {};
-        uint8_t uart_read_buffer[sizeof(uint32_t)] {};
+        uint8_t uart_read_buffer[tone_message::MESSAGE_LENGTH] {};
 
         auto uart_data_queue = uart_receive_queue(UART_NUM_0,
             uart_queue_buffer, UART_QUEUE_BUFFER_CAPACITY,
             uart_queue_buffer2, UART_QUEUE_BUFFER2_CAPACITY,
-            sizeof(uint32_t), 0xFF);
+            tone_message::MESSAGE_LENGTH, 0xFF);
 
         tone_message message_data[signal_generator::TONE_DATA_CAPACITY] {};
+        signal_generator_tone tone_data_buf0[signal_generator::TONE_DATA_CAPACITY] {};
+        signal_generator_tone tone_data_buf1[signal_generator::TONE_DATA_CAPACITY] {};
+        signal_generator_tone tone_data_buf2[signal_generator::TONE_DATA_CAPACITY] {};
+
+        signal_generator_tone* tone_data0 = tone_data_buf0;
+        signal_generator_tone* tone_data1 = tone_data_buf1;
+        signal_generator_tone* tone_data2 = tone_data_buf2;
 
         for (uint8_t i = 0; i < signal_generator::TONE_DATA_CAPACITY; i++)
         {
-            message_data[i] = {
-                .data = musical_note_tone_volume::create_invalid(),
-                .index = i
+            message_data[i] = tone_message(musical_note_tone_volume::create_invalid(), i);
+            tone_data_buf0[i] = {
+                .frequency_hz = message_data[i].frequency_hz(),
+                .volume = message_data[i].volume
+            };
+            tone_data_buf1[i] = {
+                .frequency_hz = message_data[i].frequency_hz(),
+                .volume = message_data[i].volume
+            };
+            tone_data_buf2[i] = {
+                .frequency_hz = message_data[i].frequency_hz(),
+                .volume = message_data[i].volume
             };
         }
 
-        fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data{};
-        fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data_prev{};
+        // tone_data_buf0[0] = {
+        //     .frequency_hz = musical_note_freq_hz(musical_note::A, 4),
+        //     .volume = MAX_INDIVIDUAL_VOLUME,
+        // };
+
+        // fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data{};
+        // fixed_vec<musical_note_tone_volume, signal_generator::TONE_DATA_CAPACITY> tone_data_prev{};
 
         // tone_data.add_to_end(musical_note_tone_volume {
         //     .tone = {
@@ -284,7 +297,7 @@ void receive_audio_task(void* task_param_pointer)
         //     .volume = MAX_INDIVIDUAL_VOLUME
         // });
         //
-        // signal_generator.update_tones(&tone_data);
+        // signal_generator.update_tones(tone_data0);
         //
         // while (true) { vTaskDelay(portMAX_DELAY); }
 
@@ -315,7 +328,7 @@ void receive_audio_task(void* task_param_pointer)
                     {
                         copied = 0;
 
-                        if (const auto read_item_result = uart_data_queue.next(uart_read_buffer, sizeof(uint32_t), copied);
+                        if (const auto read_item_result = uart_data_queue.next(uart_read_buffer, tone_message::MESSAGE_LENGTH, copied);
                             read_item_result != ESP_OK)
                         {
                             FLOGE("Failed to read from uart queue. (0x{:02X}", read_item_result);
@@ -325,23 +338,23 @@ void receive_audio_task(void* task_param_pointer)
 
                         if (copied > 0)
                         {
-                            assert(copied == sizeof(uint32_t));
+                            assert(copied == tone_message::MESSAGE_LENGTH);
 
                             // FVERBOSE("Read {} bytes ({}, {}, {}, {}) from uart data queue.", copied,
                                 // uart_read_buffer[0], uart_read_buffer[1], uart_read_buffer[2], uart_read_buffer[3]);
 
-                            const auto [new_data, new_index] = tone_message::read_bytes(uart_read_buffer, copied);
+                            const auto new_message = tone_message::deserialize(uart_read_buffer, copied);
 
-                            if (new_index >= signal_generator::TONE_DATA_CAPACITY)
+                            if (new_message.index >= signal_generator::TONE_DATA_CAPACITY)
                             {
-                                FLOGE("Tone message index {} out of range", new_index);
+                                FLOGE("Tone message index {} out of range", new_message.index);
                                 continue;
                             }
 
-                            if (auto& current_message = message_data[new_index];
-                                new_data != current_message.data)
+                            if (auto& current_message = message_data[new_message.index];
+                                new_message != current_message)
                             {
-                                current_message.data = new_data;
+                                current_message.copy_from(new_message);
                                 // FVERBOSE("Tone data {} => (T: {}, V: {}).", new_index, current_message.data.tone.name(), current_message.data.volume);
                                 has_change = true;
                             }
@@ -358,24 +371,41 @@ void receive_audio_task(void* task_param_pointer)
                 }
                 while (!has_change);
 
-                tone_data.clear();
-
-                for (const auto& [data, _] : message_data)
+                for (const auto& message : message_data)
                 {
-                    if (!data.is_zero_or_invalid())
-                    {
-                        tone_data.add_to_end(data);
-                    }
+                    tone_data0[message.index] = {
+                        .frequency_hz = message_data[message.index].frequency_hz(),
+                        .volume = message_data[message.index].volume
+                    };
                 }
 
-                //Only write to DAC ctrl if data changed
-                FVERBOSE("Tone data changed -> [{}]",
-                        tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
+                signal_generator.update_tones(tone_data0);
 
-                //Overwrite previous with current data for comparison next iteration
-                tone_data_prev.clone_from(tone_data);
+                //Swap tone data buffers (3 buffers to prevent conflicting
+                //with signal generator while tone data is being copied after queue
+                //message is received)
+                std::swap(tone_data0, tone_data1);
+                std::swap(tone_data1, tone_data2);
 
-                signal_generator.update_tones(&tone_data_prev);
+                // tone_data.clear();
+                //
+                // for (const auto& message : message_data)
+                // {
+                //
+                //     if (!data.is_zero_or_invalid())
+                //     {
+                //         tone_data.add_to_end(data);
+                //     }
+                // }
+                //
+                // //Only write to DAC ctrl if data changed
+                // FVERBOSE("Tone data changed -> [{}]",
+                //         tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
+                //
+                // //Overwrite previous with current data for comparison next iteration
+                // tone_data_prev.clone_from(tone_data);
+                //
+                // signal_generator.update_tones(&tone_data_prev);
             }
             catch (std::exception& e)
             {
@@ -396,40 +426,43 @@ void receive_audio_task(void* task_param_pointer)
     while (true) { vTaskDelay(portMAX_DELAY); }
 }
 
-void tone_message::write_bytes(uint8_t* buf) const
+void tone_message::serialize(uint8_t* buf) const
 {
     if (buf == nullptr)
         throw std::invalid_argument("Cannot write tone_message to nullptr.");
 
     size_t n = 0;
 
-    buf[n++] = static_cast<uint8_t>(data.tone.note);
-    buf[n++] = data.tone.octave;
-    buf[n++] = data.volume;
+    // x: frequency_dhz / z: volume -> (0000 0000)xxxx xxxx | xxxx xxxx | xxxx xxxx | zzzz zzzz
+    buf[n++] = static_cast<uint8_t>((frequency_dhz & 0xFF0000) >> 16);
+    buf[n++] = static_cast<uint8_t>((frequency_dhz & 0x00FF00) >> 8);
+    buf[n++] = static_cast<uint8_t>(frequency_dhz & 0x0000FF);
+    buf[n++] = static_cast<uint8_t>(volume); // zzzz zzzz [7, 0]
     buf[n++] = index;
 
-    assert(n == sizeof(uint32_t));
+    assert(n == MESSAGE_LENGTH);
 }
 
-tone_message tone_message::read_bytes(uint8_t* buf, const size_t len)
+tone_message tone_message::deserialize(const uint8_t* buf, const size_t len)
 {
     if (buf == nullptr)
         throw std::invalid_argument("Cannot read tone_message from nullptr.");
 
-    assert(len == sizeof(uint32_t));
+    assert(len == MESSAGE_LENGTH);
 
     size_t n = 0;
 
-    return tone_message {
-        .data = {
-            .tone = {
-                .note = static_cast<musical_note>(buf[n++]),
-                .octave = buf[n++]
-            },
-            .volume = buf[n++]
-        },
-        .index = buf[n++]
-    };
+    const auto b0 = buf[n++];
+    const auto b1 = buf[n++];
+    const auto b2 = buf[n++];
+    const auto b3 = buf[n++];
+    const auto b4 = buf[n++];
 
-    assert(n == sizeof(uint32_t));
+    assert(n == MESSAGE_LENGTH);
+
+    return {
+        static_cast<uint32_t>((b0 << 16) | (b1 << 8) | b2),
+        b3,
+        b4,
+    };
 }

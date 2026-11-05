@@ -11,7 +11,7 @@
 #include "musical_note.h"
 
 constexpr double FREQUENCY_A4 = 440; //Frequency, in hz, for A in octave 4
-constexpr double FREQUENCY_HZ_EPS = 0.1; //Consider fr within this amount to be equivalent
+constexpr double FREQUENCY_HZ_EPS = 0.001; //Consider fr within this amount to be equivalent
 
 [[nodiscard]] constexpr double musical_note_freq_hz(const musical_note note, const uint8_t octave)
 {

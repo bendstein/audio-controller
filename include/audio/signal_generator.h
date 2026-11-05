@@ -20,21 +20,22 @@ struct signal_generator_param
     size_t timer_queue_size;
 };
 
+struct signal_generator_tone
+{
+    double frequency_hz;
+    uint8_t volume;
+};
+
 class signal_generator
 {
 public:
     static constexpr auto LOG_KEY = "[Signal Gen]";
     static constexpr size_t TONE_DATA_CAPACITY = 5;
     static constexpr uint32_t TIMER_RESOLUTION_HZ = 1000000;
-
-    typedef fixed_vec<musical_note_tone_volume, TONE_DATA_CAPACITY> tone_vec_t;
 private:
     static constexpr auto TASK_NAME = "<SIGNAL-GEN>";
     static constexpr auto TASK_PRIORITY = configMAX_PRIORITIES - 1;
     static constexpr auto TASK_STACK_SIZE = 0x1000;
-
-    typedef fixed_vec<uint32_t, TONE_DATA_CAPACITY> half_period_vec_t;
-    typedef fixed_vec<uint8_t, TONE_DATA_CAPACITY> volume_vec_t;
 
     dac_oneshot_handle_t dac_handle;
     dac_oneshot_handle_t dac_handle1;
@@ -58,7 +59,7 @@ public:
     signal_generator& operator=(signal_generator&& other) = delete;
 
     esp_err_t start();
-    bool update_tones(const tone_vec_t* data, TickType_t timeout = portMAX_DELAY);
+    bool update_tones(const signal_generator_tone data[TONE_DATA_CAPACITY], TickType_t timeout = portMAX_DELAY);
 
     [[nodiscard]] static std::unique_ptr<signal_generator> try_create(const signal_generator_param& param);
 
