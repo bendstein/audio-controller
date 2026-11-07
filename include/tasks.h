@@ -41,12 +41,13 @@ struct tone_message
     tone_message() = default;
     tone_message(const uint32_t frequency_dhz, const uint8_t volume, const uint8_t index)
         : frequency_dhz(std::min(frequency_dhz, static_cast<uint32_t>((1 << 20) - 1))),
-        volume(volume),
-        index(index) {}
-    tone_message(const musical_note_tone_volume data, const uint8_t index)
+        volume(volume), index(index) {}
+    tone_message(const musical_note_tone_volume& data, const uint8_t index)
         : frequency_dhz(static_cast<uint32_t>(std::min(data.tone.frequency_hz() * 100, static_cast<double>((1 << 20) - 1)))),
-        volume(data.volume),
-        index(index) {}
+        volume(data.volume), index(index) {}
+    tone_message(const frequency_volume& data, const uint8_t index)
+        : frequency_dhz(static_cast<uint32_t>(std::min(data.frequency_hz * 100, static_cast<double>((1 << 20) - 1)))),
+        volume(data.volume), index(index) {}
 
     [[nodiscard]] double frequency_hz() const { return frequency_dhz / 100.; }
     void copy_from(const tone_message& other)

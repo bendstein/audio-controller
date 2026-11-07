@@ -102,14 +102,14 @@ void send_audio_task(void* task_param_pointer)
         uint8_t tone_message_data[2 * tone_message::MESSAGE_LENGTH] {};
         double current_distances[SENSORS_COUNT] {};
         bool distance_changes[SENSORS_COUNT] {};
-        musical_note_tone_volume current_tones[SENSORS_COUNT] {};
+        frequency_volume current_tones[SENSORS_COUNT] {};
 
         //Prefix tone message data with start pattern
         for (auto i = 0; i < tone_message::MESSAGE_LENGTH; i++)
             tone_message_data[i] = 0xFF;
 
         for (auto& current_tone : current_tones)
-            current_tone = musical_note_tone_volume::create_invalid();
+            current_tone = frequency_volume(musical_note_tone_volume::create_invalid());
 
         for (size_t i = 0, r = 0; ; i = (i + 1) % std::numeric_limits<size_t>::max())
         {
@@ -142,16 +142,32 @@ void send_audio_task(void* task_param_pointer)
                     // if (i == 0)
                     //     FLOGI("{}%", distance_ratio * 100);
 
-                    const auto volume = static_cast<uint8_t>(distance_ratio * MAX_INDIVIDUAL_VOLUME);
+                    // const auto volume = static_cast<uint8_t>(distance_ratio * MAX_INDIVIDUAL_VOLUME);
 
-                    const auto tone = volume >= MAX_INDIVIDUAL_VOLUME_THRESHOLD
-                        ? musical_note_tone::create_invalid()
-                        : SENSOR_TONES[s][0];
+                    constexpr auto RATIO_MIN = 0.05;
+                    constexpr auto RATIO_MAX = 0.95;
 
-                    current_tones[s] = {
-                        .tone = tone,
-                        .volume = volume
-                    };
+                    if (distance_ratio <= RATIO_MIN || distance_ratio >= RATIO_MAX)
+                    {
+                        current_tones[s] = frequency_volume(musical_note_tone_volume::create_invalid());
+                    }
+                    else
+                    {
+                        //Vary frequency based on distance
+                        const auto vibrato = distance_ratio * 2;
+                        current_tones[s] = frequency_volume(SENSOR_TONES[s][0], MAX_INDIVIDUAL_VOLUME, vibrato);
+                    }
+
+                    // constexpr auto volume = MAX_INDIVIDUAL_VOLUME;
+                    //
+                    // const auto tone = volume >= MAX_INDIVIDUAL_VOLUME_THRESHOLD
+                    //     ? musical_note_tone::create_invalid()
+                    //     : SENSOR_TONES[s][0];
+                    //
+                    // current_tones[s] = {
+                    //     .tone = tone,
+                    //     .volume = volume
+                    // };
 
                     //Send changed tone
                     tone_message(current_tones[s], s).serialize(tone_message_data + tone_message::MESSAGE_LENGTH);

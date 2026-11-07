@@ -5,19 +5,6 @@
 
 #include "audio/tones.h"
 
-size_t musical_note_tone::sine_table_index() const
-{
-    if (is_invalid() || octave < musical_note_data::MIN_OCTAVE || octave > musical_note_data::MAX_OCTAVE)
-        return std::numeric_limits<size_t>::max();
-
-    const auto note_number = static_cast<uint8_t>(note);
-
-    if (note_number >= musical_note_data::ALL_SINE_TABLES_LENGTH_0)
-        return std::numeric_limits<size_t>::max();
-
-    return note_number * musical_note_data::ALL_SINE_TABLES_LENGTH_1 + (octave - musical_note_data::MIN_OCTAVE);
-}
-
 uint32_t musical_note_tone::get_period(const uint32_t sample_rate) const
 {
     if (is_invalid())
@@ -47,29 +34,4 @@ double musical_note_tone::get_periodd(const double frequency_hz, const uint32_t 
         return std::numeric_limits<double>::max();
 
     return std::abs(sample_rate / frequency_hz);
-}
-
-double musical_note_tone::sine_table_value_at(const uint64_t index) const
-{
-    if (is_zero_or_invalid())
-        return 0;
-
-    return sine_table()->get_value(index);
-}
-
-uint8_t musical_note_tone::sine_table_value_at(const uint64_t index, const uint8_t scale) const
-{
-    if (is_zero_or_invalid())
-        return 0;
-
-    return sine_table()->get_value(index, scale);
-}
-
-
-uint8_t musical_note_tone_volume::sine_table_value_at(const uint64_t index) const
-{
-    if (volume == 0)
-        return 0;
-
-    return tone.sine_table_value_at(index, volume);
 }
