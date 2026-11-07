@@ -119,10 +119,12 @@ void signal_generator::dac_task(void* task_param)
         const auto increment_by = TIMER_RESOLUTION_HZ / self->sample_rate_hz;
 
         gptimer_alarm_event_data_t ev;
-        uint64_t t = 0;
 
-        uint32_t half_period_data[TONE_DATA_CAPACITY] {};
-        signal_generator_tone tone_data[TONE_DATA_CAPACITY] {};
+        bool prev_states[TONE_DATA_CAPACITY] {};
+        uint64_t ticks[TONE_DATA_CAPACITY] {};
+        uint32_t half_periods[TONE_DATA_CAPACITY] {};
+        signal_generator_tone tones[TONE_DATA_CAPACITY] {};
+        signal_generator_tone next_tones[TONE_DATA_CAPACITY] {};
 
         FLOGI("{} Task {} starting main loop.", LOG_KEY, TASK_NAME);
 
@@ -134,21 +136,26 @@ void signal_generator::dac_task(void* task_param)
 
             do
             {
-                signal_generator_tone* new_tone_data;
+                signal_generator_tone* new_tones;
 
-                if (const auto result = xQueueReceive(self->tones_queue_handle, &new_tone_data, 0);
+                if (const auto result = xQueueReceive(self->tones_queue_handle, &new_tones, 0);
                     result == pdTRUE)
                 {
-                    FVERBOSE("Received new tone data ({}).", new_tone_data.size());
+                    VERBOSE("Received new tone data.");
                     recalculate_next = true; //Tone data changed, so next should be recalculated
 
+                    //Set new tone data into next tones
                     for (auto i = 0; i < TONE_DATA_CAPACITY; i++)
                     {
-                        const auto tone = new_tone_data[i];
-                        const auto half_period = musical_note_tone::get_period(tone.frequency_hz * 2, TIMER_RESOLUTION_HZ);
+                        next_tones[i] = new_tones[i];
 
-                        tone_data[i] = tone;
-                        half_period_data[i] = half_period;
+                        //If corresponding tick is 0, reset state and update tone immediately
+                        if (ticks[i] == 0 || tones[i].frequency_hz == 0 || tones[i].volume == 0)
+                        {
+                            tones[i] = next_tones[i];
+                            half_periods[i] = musical_note_tone::get_period(tones[i].frequency_hz * 2, TIMER_RESOLUTION_HZ);
+                            prev_states[i] = false;
+                        }
                     }
                 }
 
@@ -159,19 +166,38 @@ void signal_generator::dac_task(void* task_param)
 
                     for (auto i = 0; i < TONE_DATA_CAPACITY; i++)
                     {
-                        if (const auto [frequency_hz, volume] = tone_data[i];
-                            frequency_hz > 0 && volume > 0
-                            && (t / half_period_data[i]) % 2 == 0)
+                        const auto [frequency_hz, volume] = tones[i];
+
+                        if (frequency_hz == 0 || volume == 0) //Skip zero
+                            continue;
+
+                        const auto half_period = half_periods[i];
+                        const auto prev_state = prev_states[i];
+                        const auto tick = ticks[i];
+                        const auto next_state = (tick / half_period) % 2 == 1;
+
+                        //Handle state change
+                        if (prev_state != next_state)
                         {
-                            next += volume;
+                            prev_states[i] = next_state;
+
+                            //If state change from 1 to 0, cycle complete. Reset state and allow tone change
+                            if (!next_state)
+                            {
+                                ticks[i] = 0;
+                                tones[i] = next_tones[i];
+                                half_periods[i] = musical_note_tone::get_period(tones[i].frequency_hz * 2, TIMER_RESOLUTION_HZ);
+                            }
                         }
+
+                        //If state is 1, add volume
+                        if (next_state)
+                            next += volume;
                     }
                 }
             } while (!xQueueReceive(self->timer_queue_handle, &ev, 1));
 
             //Write next value
-            t += increment_by;
-
             if (const auto result = dac_oneshot_output_voltage(self->dac_handle, next);
                 result != ESP_OK)
             {
@@ -184,6 +210,18 @@ void signal_generator::dac_task(void* task_param)
             {
                 FLOGE("{} Task {} didn't successfully write value {} to DAC channel 1. [0x{:02}] {}" ,
                     LOG_KEY, TASK_NAME, next, result, esp_err_to_name(result));
+            }
+
+            //Increment ticks
+            for (auto i = 0; i < TONE_DATA_CAPACITY; i++)
+            {
+                const auto [frequency_hz, volume] = tones[i];
+
+                //Reset ticks if 0
+                if (frequency_hz == 0 || volume == 0)
+                    ticks[i] = 0;
+                else
+                    ticks[i] += increment_by;
             }
         }
     }
