@@ -153,8 +153,9 @@ void send_audio_task(void* task_param_pointer)
                     }
                     else
                     {
-                        //Vary frequency based on distance
-                        const auto vibrato = distance_ratio * 2;
+                        // //Vary frequency based on distance
+                        // const auto vibrato = distance_ratio * 2;
+                        constexpr auto vibrato = 1.;
                         current_tones[s] = frequency_volume(SENSOR_TONES[s][0], MAX_INDIVIDUAL_VOLUME, vibrato);
                     }
 

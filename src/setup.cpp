@@ -180,7 +180,7 @@ void init_distance_sensors(app_state_controller* state)
                     FLOGE("{} Failed to perform software reset.", sensors[sensor_index]->get_log_key());
                 }
 
-                if (setup_successful && !sensors[sensor_index]->try_apply_distance_shift(gp2y0e02b::shift_bit::cm_128))
+                if (setup_successful && !sensors[sensor_index]->try_apply_distance_shift(gp2y0e02b::shift_bit::cm_64))
                 {
                     setup_successful = false;
                     FLOGE("{} Failed to apply distance shift.", sensors[sensor_index]->get_log_key());
