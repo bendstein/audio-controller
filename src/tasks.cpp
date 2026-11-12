@@ -239,6 +239,7 @@ void receive_audio_task(void* task_param_pointer)
             FLOGI("{} Inner tasks are started.", signal_generator::LOG_KEY);
         }
 
+        //Init queue for incoming uart messages
         constexpr size_t UART_QUEUE_BUFFER_CAPACITY = 255;
         constexpr size_t UART_QUEUE_BUFFER2_CAPACITY = 255;
         uint8_t uart_queue_buffer[UART_QUEUE_BUFFER_CAPACITY] {};
@@ -251,6 +252,9 @@ void receive_audio_task(void* task_param_pointer)
             tone_message::MESSAGE_LENGTH, 0xFF);
 
         tone_message message_data[signal_generator::TONE_DATA_CAPACITY] {};
+
+        //Buffers with tone data to send to signal_generator, are rotated after each send
+        //to prevent writing to a buffer that is in used
         signal_generator_tone tone_data_buf0[signal_generator::TONE_DATA_CAPACITY] {};
         signal_generator_tone tone_data_buf1[signal_generator::TONE_DATA_CAPACITY] {};
         signal_generator_tone tone_data_buf2[signal_generator::TONE_DATA_CAPACITY] {};
@@ -327,7 +331,7 @@ void receive_audio_task(void* task_param_pointer)
                 {
                     // VERBOSE("Waiting to read data from uart.");
 
-                    //Read new data from uart rx buffer
+                    //Read new data from uart rx buffer into message queue
                     if (const auto fill_queue_result = uart_data_queue.fill_buffer(portMAX_DELAY);
                         fill_queue_result != ESP_OK)
                     {
@@ -374,10 +378,10 @@ void receive_audio_task(void* task_param_pointer)
                                 // FVERBOSE("Tone data {} => (T: {}, V: {}).", new_index, current_message.data.tone.name(), current_message.data.volume);
                                 has_change = true;
                             }
-                            else
-                            {
-                                // FVERBOSE("Tone data {} unchanged.", current_message.index);
-                            }
+                            // else
+                            // {
+                            //     FVERBOSE("Tone data {} unchanged.", current_message.index);
+                            // }
                         }
                     }
                     while (copied > 0);
@@ -387,6 +391,7 @@ void receive_audio_task(void* task_param_pointer)
                 }
                 while (!has_change);
 
+                //Handle new tone data
                 for (const auto& message : message_data)
                 {
                     tone_data0[message.index] = {
@@ -402,26 +407,6 @@ void receive_audio_task(void* task_param_pointer)
                 //message is received)
                 std::swap(tone_data0, tone_data1);
                 std::swap(tone_data1, tone_data2);
-
-                // tone_data.clear();
-                //
-                // for (const auto& message : message_data)
-                // {
-                //
-                //     if (!data.is_zero_or_invalid())
-                //     {
-                //         tone_data.add_to_end(data);
-                //     }
-                // }
-                //
-                // //Only write to DAC ctrl if data changed
-                // FVERBOSE("Tone data changed -> [{}]",
-                //         tone_data.to_string([](const musical_note_tone_volume& t) -> std::string { return t.tone.name(); }));
-                //
-                // //Overwrite previous with current data for comparison next iteration
-                // tone_data_prev.clone_from(tone_data);
-                //
-                // signal_generator.update_tones(&tone_data_prev);
             }
             catch (std::exception& e)
             {
