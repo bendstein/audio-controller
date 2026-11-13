@@ -3,8 +3,6 @@
 //
 #include "app_common.h"
 
-#include <driver/uart.h>
-
 #include "setup.h"
 #include "tasks.h"
 #include "i2c/i2c.h"
@@ -37,7 +35,7 @@ app_state_controller start_controller()
         xSemaphoreGive(state.current_distances_mutex);
     }
 
-    state.uart_queue = init_uart_controller(UART_NUM_0, false);
+    state.uart_queue = init_uart_controller(UART_CFG_TX);
     init_i2c_buses(&state);
     init_distance_sensors(&state);
 
@@ -76,7 +74,7 @@ app_state_audio start_audio()
         .uart_queue = nullptr
     };
 
-    state.uart_queue = init_uart_controller(UART_NUM_0, true);
+    state.uart_queue = init_uart_controller(UART_CFG_RX);
     init_signal_generator(&state);
 
     BaseType_t create_task_result;
@@ -287,15 +285,8 @@ void init_signal_generator(app_state_audio* state)
     }
 }
 
-QueueHandle_t init_uart_controller(const uart_port_t uart_num, const bool is_receiver)
+QueueHandle_t init_uart_controller(const setup_cfg_uart_port& uart_port_config)
 {
-    constexpr size_t UART_BUFFER_SIZE = 1 << 11;
-    constexpr size_t UART_QUEUE_LEN = 255;
-    const int8_t PIN_TX = is_receiver? UART_PIN_NO_CHANGE : GPIO_NUM_8;
-    const int8_t PIN_RX = is_receiver? GPIO_NUM_7 : UART_PIN_NO_CHANGE;
-    constexpr int8_t PIN_RTS = GPIO_NUM_4;
-    constexpr int8_t PIN_CTS = GPIO_NUM_4;
-
     QueueHandle_t uart_queue = nullptr;
 
     auto is_success = true;
@@ -304,71 +295,56 @@ QueueHandle_t init_uart_controller(const uart_port_t uart_num, const bool is_rec
     {
 
         //Install driver
-        if (const auto install_result = uart_driver_install(uart_num, UART_BUFFER_SIZE, UART_BUFFER_SIZE, UART_QUEUE_LEN, &uart_queue, 0);
+        if (const auto install_result = uart_driver_install(uart_port_config.port, uart_port_config.buffer_size, uart_port_config.buffer_size, uart_port_config.queue_len, &uart_queue, 0);
             install_result != ESP_OK)
         {
             is_success = false;
-            FLOGE("Failed to install UART {} driver: 0x{:04X}", static_cast<uint8_t>(uart_num), install_result);
+            FLOGE("Failed to install UART {} driver: 0x{:04X}", static_cast<uint8_t>(uart_port_config.port), install_result);
         }
 
         //Configure communication params
         if (is_success)
         {
-            constexpr uart_config_t uart_config = {
-                .baud_rate = 115200,
-                .data_bits = UART_DATA_8_BITS,
-                .parity = UART_PARITY_EVEN,
-                .stop_bits = UART_STOP_BITS_1,
-                .flow_ctrl = UART_HW_FLOWCTRL_DISABLE,
-                .rx_flow_ctrl_thresh = 122,
-                .rx_glitch_filt_thresh = 0,
-                .source_clk = UART_SCLK_DEFAULT,
-                .flags = {
-                    .allow_pd = false,
-                    .backup_before_sleep = false
-                }
-            };
-
-            if (const auto config_result = uart_param_config(uart_num, &uart_config);
+            if (const auto config_result = uart_param_config(uart_port_config.port, &UART_OPTIONS);
                 config_result != ESP_OK)
             {
                 is_success = false;
-                FLOGE("Failed to configure UART {}: 0x{:04X}", static_cast<uint8_t>(uart_num), config_result);
+                FLOGE("Failed to configure UART {}: 0x{:04X}", static_cast<uint8_t>(uart_port_config.port), config_result);
             }
         }
 
         //Configure pins
         if (is_success)
         {
-            if (const auto config_pin_result = uart_set_pin(uart_num, PIN_TX, PIN_RX, PIN_RTS, PIN_CTS, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
+            if (const auto config_pin_result = uart_set_pin(uart_port_config.port, uart_port_config.pin_tx, uart_port_config.pin_rx, uart_port_config.pin_rts, uart_port_config.pin_cts, UART_PIN_NO_CHANGE, UART_PIN_NO_CHANGE);
                 config_pin_result != ESP_OK)
             {
                 is_success = false;
-                FLOGE("Failed to configure UART {} pins: 0x{:04X}", static_cast<uint8_t>(uart_num), config_pin_result);
+                FLOGE("Failed to configure UART {} pins: 0x{:04X}", static_cast<uint8_t>(uart_port_config.port), config_pin_result);
             }
         }
     }
     catch (std::exception& e)
     {
         is_success = false;
-        FLOGE("An error occurred during UART {} setup: {}", static_cast<uint8_t>(uart_num), e.what());
+        FLOGE("An error occurred during UART {} setup: {}", static_cast<uint8_t>(uart_port_config.port), e.what());
     }
 
     if (is_success)
     {
-        FLOGI("UART {} setup was successful (tx: {}, rx: {}, rts: {}, cts: {}).", static_cast<uint8_t>(uart_num), PIN_TX, PIN_RX, PIN_RTS, PIN_CTS);
+        FLOGI("UART {} setup was successful (tx: {}, rx: {}, rts: {}, cts: {}).", static_cast<uint8_t>(uart_port_config.port), uart_port_config.pin_tx, uart_port_config.pin_rx, uart_port_config.pin_rts, uart_port_config.pin_cts);
     }
     else
     {
-        FLOGE("UART {} setup was not successful.", static_cast<uint8_t>(uart_num));
+        FLOGE("UART {} setup was not successful.", static_cast<uint8_t>(uart_port_config.port));
 
         //Uninstall driver if installed
-        if (uart_is_driver_installed(uart_num))
+        if (uart_is_driver_installed(uart_port_config.port))
         {
-            if (const auto uninstall_result = uart_driver_delete(uart_num);
+            if (const auto uninstall_result = uart_driver_delete(uart_port_config.port);
                 uninstall_result != ESP_OK)
             {
-                FLOGE("Failed to uninstall UART {} driver: 0x{:04X}", static_cast<uint8_t>(uart_num), uninstall_result);
+                FLOGE("Failed to uninstall UART {} driver: 0x{:04X}", static_cast<uint8_t>(uart_port_config.port), uninstall_result);
             }
         }
 
