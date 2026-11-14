@@ -6,20 +6,48 @@
 #define AUDIO_CONTROLLER_SETUP_H
 #include <driver/uart.h>
 
-#include "app_state.h"
+#include "fixed_vec.h"
+#include "audio/signal_generator.h"
+#include "audio/tones.h"
+#include "i2c/i2c.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
 
-struct setup_cfg_dev
+constexpr size_t BUS_COUNT = 2;
+constexpr size_t SENSORS_COUNT = 2;
+constexpr size_t MAX_VOICES = signal_generator::TONE_DATA_CAPACITY;
+constexpr uint8_t MAX_INDIVIDUAL_VOLUME = 255 / MAX_VOICES;
+
+struct app_state_controller
 {
-    uint8_t address;
+    std::unique_ptr<i2c_master> i2c_buses[BUS_COUNT];
+    fixed_vec<std::unique_ptr<gp2y0e02b::distance_sensor>, SENSORS_COUNT> distance_sensors[BUS_COUNT];
+    TaskHandle_t sensor_tasks[BUS_COUNT];
+    double current_distances[SENSORS_COUNT];
+    bool distance_changes[SENSORS_COUNT];
+    TaskHandle_t send_audio_task;
+    SemaphoreHandle_t current_distances_mutex;
+    QueueHandle_t uart_queue;
+};
+
+struct app_state_audio
+{
+    std::unique_ptr<signal_generator> signal_gtor;
+    TaskHandle_t receive_audio_task;
+    QueueHandle_t uart_queue;
+};
+
+struct setup_cfg_sensor
+{
     uint8_t bus_num;
+    uint8_t address;
+    musical_note_tone tone;
 };
 
 struct setup_cfg_uart_port
 {
     uart_port_t port;
-    size_t buffer_size;
-    size_t queue_len;
+    int32_t buffer_size;
+    int32_t queue_len;
     int8_t pin_tx;
     int8_t pin_rx;
     int8_t pin_rts;
@@ -31,9 +59,9 @@ static constexpr i2c_master_create_cfg BUS_OPTIONS[BUS_COUNT] = {
     { .port = I2C_NUM_1, .scl = GPIO_NUM_27, .sda = GPIO_NUM_33 }
 };
 
-static constexpr setup_cfg_dev SENSOR_CFG[SENSORS_COUNT] = {
-    { .address = gp2y0e02b::distance_sensor::I2C_ADDR_DFT, .bus_num = 0 },
-    { .address = gp2y0e02b::distance_sensor::I2C_ADDR_DFT, .bus_num = 1 }
+static constexpr setup_cfg_sensor SENSOR_CFG[SENSORS_COUNT] = {
+    { .bus_num = 0, .address = 0x80, .tone = musical_note_tone(musical_note::A, 4) },
+    { .bus_num = 1, .address = 0x80, .tone = musical_note_tone(musical_note::F, 4) }
 };
 
 static constexpr uart_config_t UART_OPTIONS = {

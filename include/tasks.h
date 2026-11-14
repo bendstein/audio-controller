@@ -4,8 +4,8 @@
 
 #ifndef AUDIO_CONTROLLER_TASKS_H
 #define AUDIO_CONTROLLER_TASKS_H
-#include "app_state.h"
 #include "setup.h"
+#include "audio/tones.h"
 
 static constexpr auto DISTANCE_SENSOR_TASK_PRIORITY = 2;
 static constexpr auto DISTANCE_SENSOR_TASK_STACK_SIZE = 0x1000;

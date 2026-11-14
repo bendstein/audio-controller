@@ -11,9 +11,6 @@
 #include <driver/dac_oneshot.h>
 #include <driver/gptimer.h>
 
-#include "fixed_vec.h"
-#include "tones.h"
-
 struct signal_generator_param
 {
     uint64_t sample_rate_hz;

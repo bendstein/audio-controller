@@ -135,7 +135,7 @@ void init_distance_sensors(app_state_controller* state)
     for (auto i = 0; i < SENSORS_COUNT; i++)
     {
         bool setup_successful = true;
-        const auto [ addr, bus_num ] = SENSOR_CFG[i];
+        const auto [ bus_num, addr, _ ] = SENSOR_CFG[i];
 
         auto& sensors = state->distance_sensors[bus_num];
         const auto sensor_index = sensors.grow();

@@ -156,19 +156,8 @@ void send_audio_task(void* task_param_pointer)
                         // //Vary frequency based on distance
                         // const auto vibrato = distance_ratio * 2;
                         constexpr auto vibrato = 1.;
-                        current_tones[s] = frequency_volume(SENSOR_TONES[s][0], MAX_INDIVIDUAL_VOLUME, vibrato);
+                        current_tones[s] = frequency_volume(SENSOR_CFG[s].tone, MAX_INDIVIDUAL_VOLUME, vibrato);
                     }
-
-                    // constexpr auto volume = MAX_INDIVIDUAL_VOLUME;
-                    //
-                    // const auto tone = volume >= MAX_INDIVIDUAL_VOLUME_THRESHOLD
-                    //     ? musical_note_tone::create_invalid()
-                    //     : SENSOR_TONES[s][0];
-                    //
-                    // current_tones[s] = {
-                    //     .tone = tone,
-                    //     .volume = volume
-                    // };
 
                     //Send changed tone
                     tone_message(current_tones[s], s).serialize(tone_message_data + tone_message::MESSAGE_LENGTH);

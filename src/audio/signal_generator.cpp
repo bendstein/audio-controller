@@ -1,7 +1,9 @@
 //
 // Created by bendstein on 11/2/2026.
 //
+
 #include "app_common.h"
+#include "audio/tones.h"
 #include "audio/signal_generator.h"
 
 signal_generator::signal_generator(const signal_generator_param& param)
