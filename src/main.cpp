@@ -86,13 +86,7 @@ void main_configure_gp2y0e02b()
 {
     try
     {
-        //TODO
-
-        // const auto bus = i2c_init_bus();
-        // gpio_reset_pin(gp2y0e02b::distance_sensor::PIN_VPP_ENABLE);
-        // gpio_set_direction(gp2y0e02b::distance_sensor::PIN_VPP_ENABLE, GPIO_MODE_OUTPUT);
-        //
-        // gp2y0e02b::distance_sensor::permanently_apply_new_i2c_address(bus, CFG_GP2Y0E02B_I2C_ADDR);
+        const auto state = start_programmer();
 
         while (true)
         {

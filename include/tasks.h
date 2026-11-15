@@ -30,6 +30,11 @@ struct receive_audio_task_param
     app_state_audio* state;
 };
 
+struct programmer_task_param
+{
+    app_state_programmer* state;
+};
+
 struct tone_message
 {
     static constexpr size_t MESSAGE_LENGTH = 5;

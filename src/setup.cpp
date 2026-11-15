@@ -7,6 +7,7 @@
 #include "tasks.h"
 #include "i2c/i2c.h"
 #include "i2c/gp2y0e02b/distance_sensor.h"
+#include "i2c/gp2y0e02b/programmer.h"
 
 app_state_controller start_controller()
 {
@@ -36,7 +37,7 @@ app_state_controller start_controller()
     }
 
     state.uart_queue = init_uart_controller(UART_CFG_TX);
-    init_i2c_buses(&state);
+    init_i2c_buses(state.i2c_buses, BUS_COUNT);
     init_distance_sensors(&state);
 
     BaseType_t create_task_result;
@@ -101,9 +102,62 @@ app_state_audio start_audio()
     return state;
 }
 
-void init_i2c_buses(app_state_controller* state)
+app_state_programmer start_programmer()
 {
-    for (auto i = 0; i < BUS_COUNT; i++)
+    LOGI("Starting (Programmer).");
+    LOGI("Performing Setup...");
+
+    auto state = app_state_programmer {
+        .i2c_bus = nullptr,
+        .encoder = nullptr,
+        .event_queue = nullptr,
+    };
+
+    init_i2c_buses(&state.i2c_bus, 1);
+
+    bool gpio_isr_installed = false;
+    if (const auto result = gpio_install_isr_service(0);
+        result != ESP_OK)
+    {
+        FLOGE("Failed to enable per-pin GPIO interrupts. (0x{:04X})", result);
+    }
+    else
+    {
+        gpio_isr_installed = true;
+    }
+
+    if (gpio_isr_installed)
+    {
+        if (auto encoder = rotary_encoder::try_create(PROGRAMMER_ROTARY_ENCODER_CFG);
+            encoder != nullptr)
+        {
+            state.encoder.swap(encoder);
+        }
+    }
+    else
+    {
+        FLOGW("{} Will not create rotary encoder, as per-pin GPIO interrupts are not enabled.", rotary_encoder::LOG_KEY);
+    }
+
+    if (const auto queue = xQueueCreate(PROGRAMMER_EVENT_QUEUE_SIZE, sizeof(gp2y0e02b::programmer_event));
+        queue == nullptr)
+    {
+        LOGE("Failed to create event queue.");
+    }
+    else
+    {
+        state.event_queue = queue;
+    }
+
+    LOGI("Finished Setup.");
+
+    return state;
+}
+
+void init_i2c_buses(std::unique_ptr<i2c_master>* i2c_buses, const size_t len)
+{
+    const auto min_len = std::min(BUS_COUNT, len);
+    for (auto i = 0; i < min_len; i++)
     {
         const auto bus_cfg = BUS_OPTIONS[i];
 
@@ -112,8 +166,8 @@ void init_i2c_buses(app_state_controller* state)
             if (auto maybe_bus = i2c_master::try_create(bus_cfg);
                 maybe_bus != nullptr)
             {
-                state->i2c_buses[i].swap(maybe_bus);
-                FLOGI("{} Successfully created bus.", state->i2c_buses[i]->get_log_key());
+                i2c_buses[i].swap(maybe_bus);
+                FLOGI("{} Successfully created bus.", i2c_buses[i]->get_log_key());
             }
             else
             {
@@ -153,8 +207,8 @@ void init_distance_sensors(app_state_controller* state)
                 state->i2c_buses[bus_num]->get_handle(),
                 addr,
                 i,
-                gp2y0e02b::distance_sensor::TIMEOUT_MS_DFT
-            ); maybe_sensor != nullptr)
+                gp2y0e02b::distance_sensor::TIMEOUT_MS_DFT);
+                maybe_sensor != nullptr)
             {
                 sensors[sensor_index].swap(maybe_sensor);
 
