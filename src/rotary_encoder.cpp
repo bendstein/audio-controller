@@ -4,13 +4,128 @@
 #include "app_common.h"
 #include "rotary_encoder.h"
 
+rotary_encoder_state_machine_result rotary_encoder_state_machine::transition(const rotary_encoder_state_machine_token token)
+{
+    switch (token)
+    {
+        case rotary_encoder_state_machine_token::BUTTON_FALLING:
+            //Button was pressed down
+            state = rotary_encoder_state_machine_state::BUTTON_DOWN;
+            last_result = rotary_encoder_state_machine_result::BUTTON_DOWN;
+            break;
+        case rotary_encoder_state_machine_token::BUTTON_RISING:
+            //Button was released
+            switch (state)
+            {
+                case rotary_encoder_state_machine_state::BUTTON_DOWN:
+                    //Button was pressed and released
+                    state = rotary_encoder_state_machine_state::START;
+                    last_result = rotary_encoder_state_machine_result::BUTTON_UP;
+                    break;
+                default:
+                    //Invalid transition
+                    state = rotary_encoder_state_machine_state::START;
+                    last_result = rotary_encoder_state_machine_result::NONE;
+                    break;
+            }
+            break;
+        case rotary_encoder_state_machine_token::ENCODER_L_FALLING:
+            //Encoder left pin has started contact
+            switch (state)
+            {
+                case rotary_encoder_state_machine_state::R_FALLING:
+                    //R falling, L falling; Potential CCW turn
+                    state = rotary_encoder_state_machine_state::R_FALLING_L_FALLING;
+                    last_result = rotary_encoder_state_machine_result::NONE;
+                    break;
+                case rotary_encoder_state_machine_state::START:
+                default:
+                    //Otherwise, move to l falling state
+                    state = rotary_encoder_state_machine_state::L_FALLING;
+                    last_result = rotary_encoder_state_machine_result::NONE;
+                    break;
+            }
+            break;
+        case rotary_encoder_state_machine_token::ENCODER_L_RISING:
+            //Encoder left pin has stopped contact
+            switch (state)
+            {
+                case rotary_encoder_state_machine_state::L_FALLING_R_FALLING:
+                    //L falling, R falling, L rising; Potential CW turn
+                    state = rotary_encoder_state_machine_state::L_FALLING_R_FALLING_L_RISING;
+                    last_result = rotary_encoder_state_machine_result::NONE;
+                    break;
+                case rotary_encoder_state_machine_state::R_FALLING_L_FALLING_R_RISING:
+                    //R falling, L falling, R rising, L rising; Full CCW turn
+                    state = rotary_encoder_state_machine_state::START;
+                    last_result = rotary_encoder_state_machine_result::ENCODER_CCW;
+                    break;
+                default:
+                    //Invalid transition
+                    state = rotary_encoder_state_machine_state::START;
+                    last_result = rotary_encoder_state_machine_result::NONE;
+                    break;
+            }
+            break;
+        case rotary_encoder_state_machine_token::ENCODER_R_FALLING:
+            //Encoder right pin has started contact
+            switch (state)
+            {
+                case rotary_encoder_state_machine_state::L_FALLING:
+                    //L falling, R falling; Potential CW turn
+                    state = rotary_encoder_state_machine_state::L_FALLING_R_FALLING;
+                    last_result = rotary_encoder_state_machine_result::NONE;
+                    break;
+                case rotary_encoder_state_machine_state::START:
+                default:
+                    //Otherwise, move to r falling state
+                    state = rotary_encoder_state_machine_state::R_FALLING;
+                    last_result = rotary_encoder_state_machine_result::NONE;
+                    break;
+            }
+            break;
+        case rotary_encoder_state_machine_token::ENCODER_R_RISING:
+            //Encoder left pin has stopped contact
+            switch (state)
+            {
+                case rotary_encoder_state_machine_state::R_FALLING_L_FALLING:
+                    //R falling, L falling, R rising; Potential CCW turn
+                    state = rotary_encoder_state_machine_state::R_FALLING_L_FALLING_R_RISING;
+                    last_result = rotary_encoder_state_machine_result::NONE;
+                    break;
+                case rotary_encoder_state_machine_state::L_FALLING_R_FALLING_L_RISING:
+                    //L falling, R falling, L rising, R rising; Full CW turn
+                    state = rotary_encoder_state_machine_state::START;
+                    last_result = rotary_encoder_state_machine_result::ENCODER_CW;
+                    break;
+                default:
+                    //Invalid transition
+                    state = rotary_encoder_state_machine_state::START;
+                    last_result = rotary_encoder_state_machine_result::NONE;
+                    break;
+            }
+            break;
+        case rotary_encoder_state_machine_token::NONE:
+        default:
+            //Invalid transition
+            state = rotary_encoder_state_machine_state::START;
+            last_result = rotary_encoder_state_machine_result::NONE;
+            break;
+    }
+
+    return get_last_result();
+}
+
 rotary_encoder::rotary_encoder(const rotary_encoder_param& param)
 {
+    state_machine = {};
     pin_button = param.pin_button;
     pin_encoder_l = param.pin_encoder_l;
     pin_encoder_r = param.pin_encoder_r;
-    isr_queue = xQueueCreate(param.isr_queue_len, sizeof(rotary_encoder_isr_queue_item));
     task_handle = nullptr;
+    isr_queue = xQueueCreate(param.isr_queue_len, sizeof(rotary_encoder_state_machine_token));
+    event_queue = xQueueCreate(param.event_queue_len, sizeof(rotary_encoder_state_machine_result));
+    event_queue_timeout = param.event_queue_timeout;
 }
 
 rotary_encoder::~rotary_encoder()
@@ -51,7 +166,7 @@ rotary_encoder::~rotary_encoder()
     }
 }
 
-void rotary_encoder::isr_handler(const rotary_encoder_isr_queue_item* ev) const
+void rotary_encoder::isr_handler(const rotary_encoder_state_machine_token* ev) const
 {
     if (isr_queue == nullptr)
         return;
@@ -60,7 +175,7 @@ void rotary_encoder::isr_handler(const rotary_encoder_isr_queue_item* ev) const
         return;
 
     //Enqueue this event
-    xQueueSendFromISR(isr_queue, &ev, nullptr);
+    xQueueSendFromISR(isr_queue, ev, nullptr);
 }
 
 void rotary_encoder::isr_handler_pin_button(void* isr_param)
@@ -71,8 +186,8 @@ void rotary_encoder::isr_handler_pin_button(void* isr_param)
         return;
 
     const auto message = DIGITAL_BOOL(gpio_get_level(self->pin_button))
-        ? rotary_encoder_isr_queue_item::BUTTON_RISING
-        : rotary_encoder_isr_queue_item::BUTTON_FALLING;
+        ? rotary_encoder_state_machine_token::BUTTON_RISING
+        : rotary_encoder_state_machine_token::BUTTON_FALLING;
 
     self->isr_handler(&message);
 }
@@ -85,8 +200,8 @@ void rotary_encoder::isr_handler_pin_encoder_l(void* isr_param)
         return;
 
     const auto message = DIGITAL_BOOL(gpio_get_level(self->pin_encoder_l))
-        ? rotary_encoder_isr_queue_item::ENCODER_L_RISING
-        : rotary_encoder_isr_queue_item::ENCODER_L_FALLING;
+        ? rotary_encoder_state_machine_token::ENCODER_L_RISING
+        : rotary_encoder_state_machine_token::ENCODER_L_FALLING;
 
     self->isr_handler(&message);
 }
@@ -99,8 +214,8 @@ void rotary_encoder::isr_handler_pin_encoder_r(void* isr_param)
         return;
 
     const auto message = DIGITAL_BOOL(gpio_get_level(self->pin_encoder_r))
-        ? rotary_encoder_isr_queue_item::ENCODER_R_RISING
-        : rotary_encoder_isr_queue_item::ENCODER_R_FALLING;
+        ? rotary_encoder_state_machine_token::ENCODER_R_RISING
+        : rotary_encoder_state_machine_token::ENCODER_R_FALLING;
 
     self->isr_handler(&message);
 }
@@ -120,7 +235,7 @@ void rotary_encoder::task(void* task_param)
         {
             try
             {
-                rotary_encoder_isr_queue_item ev;
+                rotary_encoder_state_machine_token ev;
                 if (const auto result = xQueueReceive(self->isr_queue, &ev, portMAX_DELAY);
                     result != pdTRUE)
                 {
@@ -128,37 +243,38 @@ void rotary_encoder::task(void* task_param)
                     continue;
                 }
 
-                switch (ev)
+                //Advance state machine
+                const auto result = self->state_machine.transition(ev);
+
+                switch (result)
                 {
-                    case rotary_encoder_isr_queue_item::BUTTON_RISING:
-                        FLOGI("BUTTON_RISING");
+                    case rotary_encoder_state_machine_result::BUTTON_DOWN:
+                        FLOGI("BUTTON_DOWN");
                         break;
-                    case rotary_encoder_isr_queue_item::BUTTON_FALLING:
-                        FLOGI("BUTTON_FALLING");
+                    case rotary_encoder_state_machine_result::BUTTON_UP:
+                        FLOGI("BUTTON_UP");
                         break;
-                    case rotary_encoder_isr_queue_item::ENCODER_L_RISING:
-                        FLOGI("ENCODER_L_RISING");
+                    case rotary_encoder_state_machine_result::ENCODER_CW:
+                        FLOGI("ENCODER_CW");
                         break;
-                    case rotary_encoder_isr_queue_item::ENCODER_L_FALLING:
-                        FLOGI("ENCODER_L_FALLING");
-                        break;
-                    case rotary_encoder_isr_queue_item::ENCODER_R_RISING:
-                        FLOGI("ENCODER_R_RISING");
-                        break;
-                    case rotary_encoder_isr_queue_item::ENCODER_R_FALLING:
-                        FLOGI("ENCODER_R_FALLING");
+                    case rotary_encoder_state_machine_result::ENCODER_CCW:
+                        FLOGI("ENCODER_CCW");
                         break;
                     default:
-                        FLOGI("NONE?");
                         break;
+                }
+
+                //Enqueue event if space
+                if (const auto enqueue_result = xQueueSendToBack(self->event_queue, &result, self->event_queue_timeout);
+                    enqueue_result != pdTRUE)
+                {
+                    FLOGW("{} Failed to enqueue rotary encoder event to event queue during task {}. (0x{:04X})", LOG_KEY, TASK_NAME, enqueue_result);
                 }
             }
             catch (const std::exception& e)
             {
                 FLOGE("{} An exception occurred during task {} main loop: {}", LOG_KEY, TASK_NAME, e.what());
             }
-
-            vTaskDelay(5 / portTICK_PERIOD_MS);
         }
     }
     catch (const std::exception& e)
@@ -174,11 +290,17 @@ std::unique_ptr<rotary_encoder> rotary_encoder::try_create(const rotary_encoder_
     FLOGI("{} Creating rotary encoder (B: {}, L: {}, R: {}).", LOG_KEY,
         static_cast<int8_t>(param.pin_button), static_cast<int8_t>(param.pin_encoder_l), static_cast<int8_t>(param.pin_encoder_r));
 
-    auto rotary = std::unique_ptr<rotary_encoder>(new rotary_encoder(param));
+    auto rotary = std::make_unique<rotary_encoder>(param);
 
     if (rotary->isr_queue == nullptr)
     {
         FLOGE("{} Failed to create ISR queue.", LOG_KEY);
+        return nullptr;
+    }
+
+    if (rotary->event_queue == nullptr)
+    {
+        FLOGE("{} Failed to create event queue.", LOG_KEY);
         return nullptr;
     }
 
